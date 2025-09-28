@@ -8,12 +8,8 @@ import org.lwjgl.glfw.GLFWDropCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
 
 import java.awt.*;
-import java.awt.datatransfer.*;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_COMMA;
-import static org.lwjgl.glfw.GLFW.glfwSetDropCallback;
 
 public class TextField extends GUIComponent {
 

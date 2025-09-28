@@ -7,7 +7,7 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="joml-1.10.8-sources" level="project" />
+    <orderEntry type="library" name="lwjgl" level="project" />
     <orderEntry type="library" name="net.java.dev.jna" level="project" />
     <orderEntry type="library" name="net.java.dev.jna.platform" level="project" />
   </component>
