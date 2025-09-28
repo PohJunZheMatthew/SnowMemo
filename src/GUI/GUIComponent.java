@@ -51,7 +51,7 @@ public abstract class GUIComponent implements Renderable {
             2, 1, 0
     };
     private final Window windowParent;
-    private final List<EventCallBack<? extends Event>> callBacks = new ArrayList<>();
+    protected final List<EventCallBack<? extends Event>> callBacks = new ArrayList<>();
     private final static HashMap<Window, HashMap<Integer, GUIComponent>> GUIComponents = new HashMap<>();
     private GUIComponent parent;
     private final List<GUIComponent> children = new ArrayList<GUIComponent>();
@@ -547,5 +547,46 @@ public abstract class GUIComponent implements Renderable {
         public int compare(GUIComponent o1, GUIComponent o2) {
             return o1.Z_Index - o2.Z_Index;
         }
+    }
+    public static GUIComponent getTopComponentAt(Window window, double x, double y) {
+        HashMap<Integer, GUIComponent> windowComponents = GUIComponents.get(window);
+        if (windowComponents == null || windowComponents.isEmpty()) return null;
+        List<GUIComponent> comps = new ArrayList<>(windowComponents.values());
+        comps.sort(Comparator.comparingInt(GUIComponent::getZ_Index));
+        Collections.reverse(comps);
+        for (GUIComponent root : comps) {
+            GUIComponent hit = getDeepestComponentAt(root, x, y);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private static GUIComponent getDeepestComponentAt(GUIComponent comp, double x, double y) {
+        if (!comp.visible) return null;
+        int left = comp.getxPx();
+        int top = comp.getyPx();
+        int right = left + comp.getWidthPx();
+        int bottom = top + comp.getHeightPx();
+        if (x < left || x > right || y < top || y > bottom) return null;
+        List<GUIComponent> childrenCopy = new ArrayList<>(comp.getChildren());
+        childrenCopy.sort(Comparator.comparingInt(GUIComponent::getZ_Index));
+        Collections.reverse(childrenCopy);
+        for (GUIComponent child : childrenCopy) {
+            GUIComponent deeper = getDeepestComponentAt(child, x, y);
+            if (deeper != null) return deeper;
+        }
+        return comp;
+    }
+
+    public static ScrollableFrame findScrollableAncestor(GUIComponent comp) {
+        GUIComponent cur = comp;
+        while (cur != null) {
+            if (cur instanceof ScrollableFrame) return (ScrollableFrame) cur;
+            cur = cur.getParent();
+        }
+        return null;
+    }
+    public static Point2D getMousePos(Window w) {
+        return mpos.get(w);
     }
 }

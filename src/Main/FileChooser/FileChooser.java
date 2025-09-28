@@ -2,9 +2,15 @@ package Main.FileChooser;
 
 import GUI.Events.MouseClickCallBack;
 import GUI.Events.MouseClickEvent;
+import GUI.Events.TextChangeCallBack;
+import GUI.Events.TextChangeEvent;
 import GUI.GUIComponent;
+import GUI.Label;
+import GUI.ScrollableFrame;
 import GUI.TextField;
+import Main.Mesh;
 import Main.SnowMemo;
+import Main.Utils;
 import Main.Window;
 import org.joml.Matrix4f;
 import org.lwjgl.glfw.*;
@@ -12,20 +18,25 @@ import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.system.MemoryUtil;
 
-import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.glClearColor;
 
 public class FileChooser extends Window {
+    private FileChooser self = this;
     private static FileChooser currentFileChooser;
-    private GUIComponent chooseFileButton,chooseFileFrame;
+    private GUIComponent chooseFileButton,chooseFileFrame,cancelFileButton;
     private TextField fileNameTextField;
+    private File currentDirectory = new File("/Users/polarbear1612/Downloads/");
+    private ScrollableFrame suggestionsFrame;
+//    private List<GUIComponent> suggestions = new ArrayList<GUIComponent>();
+    private Mesh backgroundCube;
     public FileChooser(){
-        // Don't call glfwInit() again - it's already initialized by the main Window
         long monitor = GLFW.glfwGetPrimaryMonitor();
         if (monitor == 0L) {
             throw new IllegalStateException("No primary monitor found");
@@ -38,7 +49,6 @@ public class FileChooser extends Window {
         int h = vidMode.height()/2;
         this.width = w;
         this.height = h;
-
         GLFW.glfwDefaultWindowHints();
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GL11.GL_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_RESIZABLE, GL11.GL_TRUE);
@@ -52,7 +62,6 @@ public class FileChooser extends Window {
         GLFW.glfwWindowHintString(GLFW.GLFW_X11_CLASS_NAME, "Snow Memo");
         GLFW.glfwWindowHintString(GLFW.GLFW_X11_INSTANCE_NAME, "Snow Memo");
         GLFW.glfwWindowHint(GLFW.GLFW_DEPTH_BITS, 24);
-
         boolean maximised = false;
         if (w == 0 || h == 0) {
             width = 100;
@@ -98,12 +107,9 @@ public class FileChooser extends Window {
                 }
             }
         });
-
-        // Store old context and make this window current
         long oldContext = GLFW.glfwGetCurrentContext();
         GLFW.glfwMakeContextCurrent(window);
 
-        // Get framebuffer size for proper initialization
         IntBuffer fbWidth = MemoryUtil.memAllocInt(1);
         IntBuffer fbHeight = MemoryUtil.memAllocInt(1);
         GLFW.glfwGetFramebufferSize(window, fbWidth, fbHeight);
@@ -159,17 +165,89 @@ public class FileChooser extends Window {
                 }
             }
         });
+        GLFW.glfwSetScrollCallback(window, (long windowHandle, double xoffset, double yoffset) -> {
+            for (GLFWScrollCallback callback : ScrollCallbacks) {
+                try {
+                    callback.invoke(windowHandle, xoffset, yoffset);
+                } catch (Exception e) {
+                    System.err.println("Error in scroll callback: " + e.getMessage());
+                }
+            }
+        });
         // Restore old context
         GLFW.glfwMakeContextCurrent(oldContext);
 
         System.out.println("FileChooser window created with handle: " + window);
-
+        backgroundCube = Utils.loadObj(SnowMemo.class.getResourceAsStream("Cube.obj"));
         initGUI();
     }
 
     public void initGUI(){
-        fileNameTextField = new TextField(this, 0.1f, 0.1f, 0.6f, 0.08f);
-        fileNameTextField.setPlaceholder("Enter filename...").setBaseFont(SnowMemo.currentTheme.getFonts()[0]).setFocused(true);
+        suggestionsFrame =  new ScrollableFrame(this,0.075f,0.7f,0.626f,0.2f);
+        fileNameTextField = new TextField(this, 0.075f, 0.9f, 0.625f, 0.05f);
+        fileNameTextField.setPlaceholder("Enter filename...").setBaseFont(SnowMemo.currentTheme.getFonts()[0]).setFocused(true).setCornerRadius(30);
+        fileNameTextField.onChange(new TextChangeCallBack() {
+            @Override
+            public void onEvent(TextChangeEvent event) {
+                String fileName = event.getNewText().trim();
+                suggestionsFrame.clearChildren();
+
+                File[] files = currentDirectory.listFiles();
+                if (files != null && !fileName.isEmpty()) {
+                    int yOffset = 0;
+                    for (File file : files) {
+                        if (file.getName().toLowerCase().startsWith(fileName.toLowerCase())) {
+                            Label suggestionLabel = new Label(self, file.getName());
+                            suggestionLabel.setX(0.01f)
+                                    .setY(yOffset * 0.05f)
+                                    .setWidth(0.98f)
+                                    .setHeight(0.04f);
+                            suggestionsFrame.addChild(suggestionLabel);
+                            yOffset++;
+                            System.out.println(file.getName());
+                        }
+                    }
+                }
+            }
+        });
+        cancelFileButton = new GUIComponent(this,0.7125f, 0.9f, 0.1f, 0.05f) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2d = (Graphics2D) g.create();
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int width = getWidthPx();
+                int height = getHeightPx();
+
+                g2d.setColor(SnowMemo.currentTheme.getMainColor());
+                int arc = (int) Math.min(width * 0.5, height * 0.5);
+                g2d.fillRoundRect(0, 0, width, height, arc, arc);
+
+                g2d.setStroke(new BasicStroke(2.5f));
+                g2d.setColor(SnowMemo.currentTheme.getFontColors()[0]);
+                g2d.drawRoundRect(0, 0, width - 1, height - 1, arc, arc);
+
+                float fontSize = (float) (height * 0.5);
+                Font font = SnowMemo.currentTheme.getFonts()[0].deriveFont(Font.BOLD, fontSize);
+                g2d.setFont(font);
+
+                String text = "Cancel";
+                FontMetrics fm = g2d.getFontMetrics();
+                int textWidth = fm.stringWidth(text);
+                int textHeight = fm.getAscent();
+
+                int x = (width - textWidth) / 2;
+                int y = (height - fm.getHeight()) / 2 + textHeight;
+
+                g2d.drawString(text, x, y);
+                g2d.dispose();
+            }
+
+            @Override
+            public void init() {
+
+            }
+        };
         chooseFileFrame = new GUIComponent(this,0.05f,0.875f,0.9f,0.1f) {
             @Override
             protected void paintComponent(Graphics g) {
@@ -194,6 +272,7 @@ public class FileChooser extends Window {
 
             }
         };
+        cancelFileButton.setZ_Index(1);
         chooseFileFrame.setZ_Index(-1);
         chooseFileButton = new GUIComponent(this, 0.825f, 0.9f, 0.1f, 0.05f) {
             @Override
@@ -258,9 +337,9 @@ public class FileChooser extends Window {
         projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio, Z_NEAR, Z_FAR);
 
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        backgroundCube.render();
         GUIComponent.renderGUIs(this);
         GLFW.glfwSwapBuffers(window);
-
         GLFW.glfwMakeContextCurrent(oldContext);
     }
 
