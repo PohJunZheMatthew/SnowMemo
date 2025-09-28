@@ -33,7 +33,11 @@ public class Window {
     public final List<GLFWKeyCallback> KeyCallbacks = new ArrayList<>();
     public final List<GLFWCharCallback> CharCallbacks = new ArrayList<>();
     public final List<GLFWDropCallback> DropCallbacks = new ArrayList<>();
-
+    public final List<GLFWScrollCallback> ScrollCallbacks = new ArrayList<>();
+    private double mouseX;
+    private double mouseY;
+    public double getMouseX() { return mouseX; }
+    public double getMouseY() { return mouseY; }
 
     public Window(){}
 
@@ -108,6 +112,8 @@ public class Window {
             CursorPosCallbacks.forEach(c -> {
                 try {
                     c.invoke(windowHandle, xpos, ypos);
+                    mouseX =xpos;
+                    mouseY = ypos;
                 } catch (Exception e) {
                     System.err.println("Error in cursor position callback: " + e.getMessage());
                 }
@@ -146,6 +152,15 @@ public class Window {
         GLFW.glfwSetDropCallback(window,(long windowHandle, int count, long names)->{
             for (GLFWDropCallback callback: DropCallbacks) {
                 callback.invoke(windowHandle,count,names);
+            }
+        });
+        GLFW.glfwSetScrollCallback(window, (long windowHandle, double xoffset, double yoffset) -> {
+            for (GLFWScrollCallback callback : ScrollCallbacks) {
+                try {
+                    callback.invoke(windowHandle, xoffset, yoffset);
+                } catch (Exception e) {
+                    System.err.println("Error in scroll callback: " + e.getMessage());
+                }
             }
         });
         System.out.println("OpenGL version: " + GL11.glGetString(GL11.GL_VERSION));

@@ -20,7 +20,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.math.BigInteger;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.*;
@@ -51,7 +50,7 @@ public abstract class GUIComponent implements Renderable {
             2, 1, 0
     };
     private final Window windowParent;
-    private final List<EventCallBack<? extends Event>> callBacks = new ArrayList<>();
+    protected final List<EventCallBack<? extends Event>> callBacks = new ArrayList<>();
     private final static HashMap<Window, HashMap<Integer, GUIComponent>> GUIComponents = new HashMap<>();
     private GUIComponent parent;
     private final List<GUIComponent> children = new ArrayList<GUIComponent>();
@@ -259,10 +258,17 @@ public abstract class GUIComponent implements Renderable {
     public final void render() {
         if (!visible) return;
 
-        widthPx = (int) (windowParent.getWidth() * width);
-        heightPx = (int) (windowParent.getHeight() * height);
-        xPx = (int) (windowParent.getWidth() * x);
-        yPx = (int) (windowParent.getHeight() * y);
+        if (parent != null) {
+            widthPx  = (int) (parent.getWidthPx() * width);
+            heightPx = (int) (parent.getHeightPx() * height);
+            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
+            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
+        } else {
+            widthPx  = (int) (windowParent.getWidth() * width);
+            heightPx = (int) (windowParent.getHeight() * height);
+            xPx = (int) (windowParent.getWidth() * x);
+            yPx = (int) (windowParent.getHeight() * y);
+        }
         updateHitBox();
 
         boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
@@ -287,9 +293,13 @@ public abstract class GUIComponent implements Renderable {
     }
 
     private void renderGUIImage() {
+//        System.out.println("hashCode() = " + hashCode());
+//        System.out.println("widthPx = " + widthPx);
+//        System.out.println("heightPx = " + heightPx);
+//        System.out.println("width = " + width);
+//        System.out.println("height = " + height);
         BufferedImage bi = new BufferedImage(Math.max(1, widthPx), Math.max(1, heightPx), BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = bi.createGraphics();
-
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         paintComponent(g);
@@ -534,18 +544,61 @@ public abstract class GUIComponent implements Renderable {
     }
 
     // Clears all children
-    public GUIComponent clearChildren() {
-        for (GUIComponent child : children) {
+    public void clearChildren() {
+        for (GUIComponent child : new ArrayList<>(children)) {
+            child.cleanUp();
             child.parent = null;
+            GUIComponents.remove(child.hashCode());
         }
         children.clear();
-        return this;
     }
+
 
     private static class ZSort implements Comparator<GUIComponent> {
         @Override
         public int compare(GUIComponent o1, GUIComponent o2) {
             return o1.Z_Index - o2.Z_Index;
         }
+    }
+    public static GUIComponent getTopComponentAt(Window window, double x, double y) {
+        HashMap<Integer, GUIComponent> windowComponents = GUIComponents.get(window);
+        if (windowComponents == null || windowComponents.isEmpty()) return null;
+        List<GUIComponent> comps = new ArrayList<>(windowComponents.values());
+        comps.sort(Comparator.comparingInt(GUIComponent::getZ_Index));
+        Collections.reverse(comps);
+        for (GUIComponent root : comps) {
+            GUIComponent hit = getDeepestComponentAt(root, x, y);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    private static GUIComponent getDeepestComponentAt(GUIComponent comp, double x, double y) {
+        if (!comp.visible) return null;
+        int left = comp.getxPx();
+        int top = comp.getyPx();
+        int right = left + comp.getWidthPx();
+        int bottom = top + comp.getHeightPx();
+        if (x < left || x > right || y < top || y > bottom) return null;
+        List<GUIComponent> childrenCopy = new ArrayList<>(comp.getChildren());
+        childrenCopy.sort(Comparator.comparingInt(GUIComponent::getZ_Index));
+        Collections.reverse(childrenCopy);
+        for (GUIComponent child : childrenCopy) {
+            GUIComponent deeper = getDeepestComponentAt(child, x, y);
+            if (deeper != null) return deeper;
+        }
+        return comp;
+    }
+
+    public static ScrollableFrame findScrollableAncestor(GUIComponent comp) {
+        GUIComponent cur = comp;
+        while (cur != null) {
+            if (cur instanceof ScrollableFrame) return (ScrollableFrame) cur;
+            cur = cur.getParent();
+        }
+        return null;
+    }
+    public static Point2D getMousePos(Window w) {
+        return mpos.get(w);
     }
 }

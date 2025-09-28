@@ -1,6 +1,7 @@
 package GUI;
 
 import GUI.Events.*;
+import GUI.Events.Event;
 import Main.Window;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCharCallback;
@@ -36,6 +37,7 @@ public class TextField extends GUIComponent {
     private static final long CURSOR_BLINK = 500;
 
     private int scrollOffset = 0;
+    private int selectionAnchor = -1;
 
     public TextField(Window window) { this(window, 0.3f, 0.06f); }
     public TextField(Window window, float width, float height) { this(window, 0, 0, width, height); }
@@ -44,13 +46,28 @@ public class TextField extends GUIComponent {
         initCallbacks(window);
     }
 
+    private void fireTextChangeEvent(String oldText) {
+        if (!oldText.equals(text)) {
+            TextChangeEvent event = new TextChangeEvent(this, oldText, text);
+            for (EventCallBack<? extends Event> listener : callBacks) {
+                if (listener instanceof TextChangeCallBack) {
+                    try {
+                        ((TextChangeCallBack) listener).onEvent(event);
+                    } catch (Exception e) {
+                        System.err.println("Error in text change callback: " + e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
     private void initCallbacks(Window window) {
         window.DropCallbacks.add(new GLFWDropCallback() {
             @Override
             public void invoke(long window, int count, long names) {
                 for (int i = 0; i < count; i++) {
                     String droppedText = GLFWDropCallback.getName(names, i);
-                    insertText(droppedText); // insert into textfield
+                    insertText(droppedText);
                 }
             }
         });
@@ -92,6 +109,7 @@ public class TextField extends GUIComponent {
     private void handleKey(int key, int mods) {
         boolean ctrl = (mods & 0x0002) != 0 || mods == GLFW.GLFW_MOD_SUPER;
         boolean shift = (mods & 0x0001) != 0;
+        String oldText = text;
 
         switch (key) {
             case GLFW.GLFW_KEY_BACKSPACE -> {
@@ -101,11 +119,13 @@ public class TextField extends GUIComponent {
                     cursorPosition--;
                 }
                 if (!shift) clearSelection();
+                fireTextChangeEvent(oldText);
             }
             case GLFW.GLFW_KEY_DELETE -> {
                 if (hasSelection()) deleteSelection();
                 else if (cursorPosition < text.length()) text = text.substring(0, cursorPosition) + text.substring(cursorPosition + 1);
                 if (!shift) clearSelection();
+                fireTextChangeEvent(oldText);
             }
             case GLFW.GLFW_KEY_LEFT -> moveCursorLeft(shift);
             case GLFW.GLFW_KEY_RIGHT -> moveCursorRight(shift);
@@ -114,41 +134,45 @@ public class TextField extends GUIComponent {
             case GLFW.GLFW_KEY_A -> { if (ctrl) selectAll(); }
             case GLFW.GLFW_KEY_C -> { if (ctrl && hasSelection()) copyToClipboard(getSelectedText()); }
             case GLFW.GLFW_KEY_V -> { if (ctrl) { String clip = getFromClipboard(); if (clip != null) insertText(clip); } }
-            case GLFW.GLFW_KEY_X -> { if (ctrl && hasSelection()) { copyToClipboard(getSelectedText()); deleteSelection(); } }
+            case GLFW.GLFW_KEY_X -> { if (ctrl && hasSelection()) { copyToClipboard(getSelectedText()); deleteSelection(); fireTextChangeEvent(oldText); } }
         }
         resetCursorBlink();
         updateScrollOffset();
     }
 
-
     private void handleChar(char c) { if (c >= 32 && c != 127) insertText(String.valueOf(c)); }
 
     private void insertText(String str) {
         if (str == null || str.isEmpty()) return;
+        String oldText = text;
         if (hasSelection()) deleteSelection();
         text = text.substring(0, cursorPosition) + str + text.substring(cursorPosition);
         cursorPosition += str.length();
         resetCursorBlink();
         updateScrollOffset();
+        fireTextChangeEvent(oldText);
     }
 
-    // Copy string to clipboard
     private void copyToClipboard(String s) {
         if (s == null || s.isEmpty()) return;
         GLFW.glfwSetClipboardString(getWindowParent().getWindowHandle(), s);
     }
 
-    // Get string from clipboard
     private String getFromClipboard() {
         String clip = GLFW.glfwGetClipboardString(getWindowParent().getWindowHandle());
         return clip != null ? clip : "";
     }
 
-
     private boolean hasSelection() { return selectionStart != -1 && selectionEnd != -1 && selectionStart != selectionEnd; }
     private void selectAll() { selectionStart = 0; selectionEnd = text.length(); cursorPosition = text.length(); }
     private String getSelectedText() { if (!hasSelection()) return ""; int s = Math.min(selectionStart, selectionEnd), e = Math.max(selectionStart, selectionEnd); return text.substring(s, e); }
-    private void deleteSelection() { int s = Math.min(selectionStart, selectionEnd), e = Math.max(selectionStart, selectionEnd); text = text.substring(0, s) + text.substring(e); cursorPosition = s; clearSelection(); }
+
+    private void deleteSelection() {
+        int s = Math.min(selectionStart, selectionEnd), e = Math.max(selectionStart, selectionEnd);
+        text = text.substring(0, s) + text.substring(e);
+        cursorPosition = s;
+        clearSelection();
+    }
 
     private void resetCursorBlink() { showCursor = true; lastBlink = System.currentTimeMillis(); }
     private void updateCursorBlink() { if (System.currentTimeMillis() - lastBlink > CURSOR_BLINK) { showCursor = !showCursor; lastBlink = System.currentTimeMillis(); } }
@@ -230,44 +254,14 @@ public class TextField extends GUIComponent {
         g2.dispose();
     }
 
-    public String getText() { return text; }
-    public TextField setText(String t) { text = t != null ? t : ""; cursorPosition = Math.min(cursorPosition, text.length()); resetCursorBlink(); updateScrollOffset(); return this; }
-    public TextField setPlaceholder(String p) { placeholder = p; return this; }
-    public Font getBaseFont() { return baseFont; }
-    public TextField setBaseFont(Font baseFont) { this.baseFont = baseFont; this.scaledFont = baseFont; return this; }
-    public Color getTextColor() { return textColor; }
-    public TextField setTextColor(Color textColor) { this.textColor = textColor; return this; }
-    public Color getBackgroundColor() { return backgroundColor; }
-    public TextField setBackgroundColor(Color backgroundColor) { this.backgroundColor = backgroundColor; return this; }
-    public Color getBorderColor() { return borderColor; }
-    public TextField setBorderColor(Color borderColor) { this.borderColor = borderColor; return this; }
-    public Color getFocusedBorderColor() { return focusedBorderColor; }
-    public TextField setFocusedBorderColor(Color focusedBorderColor) { this.focusedBorderColor = focusedBorderColor; return this; }
-    public Color getPlaceholderColor() { return placeholderColor; }
-    public TextField setPlaceholderColor(Color placeholderColor) { this.placeholderColor = placeholderColor; return this; }
-    public Color getSelectionColor() { return selectionColor; }
-    public TextField setSelectionColor(Color selectionColor) { this.selectionColor = selectionColor; return this; }
-    public Color getCursorColor() { return cursorColor; }
-    public TextField setCursorColor(Color cursorColor) { this.cursorColor = cursorColor; return this; }
-    public int getBorderWidth() { return borderWidth; }
-    public TextField setBorderWidth(int borderWidth) { this.borderWidth = borderWidth; return this; }
-    public int getPadding() { return padding; }
-    public TextField setPadding(int padding) { this.padding = padding; return this; }
-    public int getCornerRadius() { return cornerRadius; }
-    public TextField setCornerRadius(int cornerRadius) { this.cornerRadius = cornerRadius; return this; }
-    @Override
-    public void init() {}
-    public TextField setFocused(boolean b) { this.focused = true; return this; }
-    private int selectionAnchor = -1;
-
     private void moveCursorLeft(boolean shift) {
-        if (shift && selectionAnchor == -1) selectionAnchor = cursorPosition; // first Shift press
+        if (shift && selectionAnchor == -1) selectionAnchor = cursorPosition;
         if (cursorPosition > 0) cursorPosition--;
         updateSelection(shift);
     }
 
     private void moveCursorRight(boolean shift) {
-        if (shift && selectionAnchor == -1) selectionAnchor = cursorPosition; // first Shift press
+        if (shift && selectionAnchor == -1) selectionAnchor = cursorPosition;
         if (cursorPosition < text.length()) cursorPosition++;
         updateSelection(shift);
     }
@@ -296,5 +290,51 @@ public class TextField extends GUIComponent {
 
     private void clearSelection() {
         selectionStart = selectionEnd = selectionAnchor = -1;
+    }
+
+    public String getText() { return text; }
+
+    public TextField setText(String t) {
+        String oldText = this.text;
+        text = t != null ? t : "";
+        cursorPosition = Math.min(cursorPosition, text.length());
+        resetCursorBlink();
+        updateScrollOffset();
+        fireTextChangeEvent(oldText);
+        return this;
+    }
+
+    public TextField setPlaceholder(String p) { placeholder = p; return this; }
+    public Font getBaseFont() { return baseFont; }
+    public TextField setBaseFont(Font baseFont) { this.baseFont = baseFont; this.scaledFont = baseFont; return this; }
+    public Color getTextColor() { return textColor; }
+    public TextField setTextColor(Color textColor) { this.textColor = textColor; return this; }
+    public Color getBackgroundColor() { return backgroundColor; }
+    public TextField setBackgroundColor(Color backgroundColor) { this.backgroundColor = backgroundColor; return this; }
+    public Color getBorderColor() { return borderColor; }
+    public TextField setBorderColor(Color borderColor) { this.borderColor = borderColor; return this; }
+    public Color getFocusedBorderColor() { return focusedBorderColor; }
+    public TextField setFocusedBorderColor(Color focusedBorderColor) { this.focusedBorderColor = focusedBorderColor; return this; }
+    public Color getPlaceholderColor() { return placeholderColor; }
+    public TextField setPlaceholderColor(Color placeholderColor) { this.placeholderColor = placeholderColor; return this; }
+    public Color getSelectionColor() { return selectionColor; }
+    public TextField setSelectionColor(Color selectionColor) { this.selectionColor = selectionColor; return this; }
+    public Color getCursorColor() { return cursorColor; }
+    public TextField setCursorColor(Color cursorColor) { this.cursorColor = cursorColor; return this; }
+    public int getBorderWidth() { return borderWidth; }
+    public TextField setBorderWidth(int borderWidth) { this.borderWidth = borderWidth; return this; }
+    public int getPadding() { return padding; }
+    public TextField setPadding(int padding) { this.padding = padding; return this; }
+    public int getCornerRadius() { return cornerRadius; }
+    public TextField setCornerRadius(int cornerRadius) { this.cornerRadius = cornerRadius; return this; }
+
+    @Override
+    public void init() {}
+
+    public TextField setFocused(boolean b) { this.focused = b; return this; }
+
+    public TextField onChange(TextChangeCallBack callback) {
+        addCallBack(callback);
+        return this;
     }
 }
