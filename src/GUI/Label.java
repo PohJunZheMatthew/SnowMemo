@@ -1,7 +1,6 @@
 package GUI;
 
 import Main.Window;
-
 import java.awt.*;
 import java.awt.image.BufferedImage;
 
@@ -14,8 +13,18 @@ public class Label extends GUIComponent {
     private Color backgroundColor = Color.white;
     private int horizontalAlignment = SwingConstants.LEFT;
     private int verticalAlignment = SwingConstants.CENTER;
-    private int padding = 5;
-    private boolean autoResize = false;
+    private int padding = 0;
+    private boolean bold = false;
+    private float CornerRadius = 0f;
+    public enum AutoResizeMode {
+        NONE,
+        FIT_WIDTH,
+        FIT_HEIGHT,
+        FIT_BOTH,
+        SCALE_BY_SIZE
+    }
+
+    private AutoResizeMode autoResizeMode = AutoResizeMode.NONE;
     private boolean wordWrap = false;
 
     public static class SwingConstants {
@@ -50,26 +59,21 @@ public class Label extends GUIComponent {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
         int w = getWidthPx();
         int h = getHeightPx();
-
         if (backgroundColor != null) {
             g2.setColor(backgroundColor);
             g2.fillRect(0, 0, w, h);
         }
-
         if (!text.isEmpty()) {
             g2.setFont(scaledFont);
             g2.setColor(textColor);
-
             if (wordWrap) {
                 drawWrappedText(g2, w, h);
             } else {
                 drawSingleLineText(g2, w, h);
             }
         }
-
         g2.dispose();
     }
 
@@ -77,10 +81,8 @@ public class Label extends GUIComponent {
         FontMetrics fm = g2.getFontMetrics();
         int textWidth = fm.stringWidth(text);
         int textHeight = fm.getHeight();
-
         int x = calculateHorizontalPosition(textWidth, w);
         int y = calculateVerticalPosition(textHeight, h, fm);
-
         g2.drawString(text, x, y);
     }
 
@@ -89,31 +91,23 @@ public class Label extends GUIComponent {
         String[] words = text.split(" ");
         java.util.List<String> lines = new java.util.ArrayList<>();
         StringBuilder currentLine = new StringBuilder();
-
         int availableWidth = w - 2 * padding;
-
         for (String word : words) {
             String testLine = currentLine.length() == 0 ? word : currentLine + " " + word;
             if (fm.stringWidth(testLine) <= availableWidth) {
                 if (currentLine.length() > 0) currentLine.append(" ");
                 currentLine.append(word);
             } else {
-                if (currentLine.length() > 0) {
-                    lines.add(currentLine.toString());
-                    currentLine = new StringBuilder(word);
-                } else {
-                    lines.add(word);
-                }
+                lines.add(currentLine.toString());
+                currentLine = new StringBuilder(word);
             }
         }
         if (currentLine.length() > 0) {
             lines.add(currentLine.toString());
         }
-
         int lineHeight = fm.getHeight();
         int totalTextHeight = lines.size() * lineHeight;
         int startY = calculateVerticalStartPosition(totalTextHeight, h, fm);
-
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             int lineWidth = fm.stringWidth(line);
@@ -121,6 +115,40 @@ public class Label extends GUIComponent {
             int y = startY + (i * lineHeight);
             g2.drawString(line, x, y);
         }
+    }
+
+    private void updateFontScale() {
+        Font f = bold ? baseFont.deriveFont(Font.BOLD) : baseFont;
+        if (autoResizeMode == AutoResizeMode.NONE || text.isEmpty()) {
+            scaledFont = f;
+            return;
+        }
+        int availWidth = Math.max(1, getWidthPx() - 2 * padding);
+        int availHeight = Math.max(1, getHeightPx() - 2 * padding);
+        BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setFont(f);
+        FontMetrics fm = g.getFontMetrics();
+        int textWidth = fm.stringWidth(text);
+        int textHeight = fm.getHeight();
+        g.dispose();
+        float scale;
+        switch (autoResizeMode) {
+            case FIT_WIDTH -> scale = (float) availWidth / textWidth;
+            case FIT_HEIGHT -> scale = (float) availHeight / textHeight;
+            case SCALE_BY_SIZE -> {
+                float widthScale = (float) availWidth / 100f;
+                float heightScale = (float) availHeight / 100f;
+                scale = Math.max(widthScale, heightScale);
+            }
+            default -> {
+                float widthScale = (float) availWidth / textWidth;
+                float heightScale = (float) availHeight / textHeight;
+                scale = Math.min(widthScale, heightScale);
+            }
+        }
+        float newSize = Math.max(8, f.getSize2D() * scale);
+        scaledFont = f.deriveFont(newSize*1.2f);
     }
 
     private int calculateHorizontalPosition(int textWidth, int containerWidth) {
@@ -135,7 +163,7 @@ public class Label extends GUIComponent {
         return switch (verticalAlignment) {
             case SwingConstants.TOP -> padding + fm.getAscent();
             case SwingConstants.BOTTOM -> containerHeight - padding - fm.getDescent();
-            default -> (containerHeight - textHeight) / 2 + fm.getAscent();
+            default -> (containerHeight + fm.getAscent() - fm.getDescent()) / 2;
         };
     }
 
@@ -147,58 +175,40 @@ public class Label extends GUIComponent {
         };
     }
 
-    private void updateFontScale() {
-        if (autoResize && !text.isEmpty()) {
-            int availWidth = Math.max(1, getWidthPx() - 2 * padding);
-            int availHeight = Math.max(1, getHeightPx() - 2 * padding);
-
-            scaledFont = baseFont;
-
-            BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = img.createGraphics();
-            g.setFont(scaledFont);
-            FontMetrics fm = g.getFontMetrics();
-
-            int textWidth = fm.stringWidth(text);
-            int textHeight = fm.getHeight();
-
-            float widthScale = (float) availWidth / textWidth;
-            float heightScale = (float) availHeight / textHeight;
-            float scale = Math.min(widthScale, heightScale);
-
-            if (scale < 1.0f || scale > 1.0f) {
-                float newSize = Math.max(8, baseFont.getSize2D() * scale);
-                scaledFont = baseFont.deriveFont(newSize);
-            }
-
-            g.dispose();
-        } else {
-            scaledFont = baseFont;
-        }
-    }
-
-    public String getText() {
-        return text;
+    public Label setBold(boolean bold) {
+        this.bold = bold;
+        refresh();
+        return this;
     }
 
     public Label setText(String text) {
         this.text = text != null ? text : "";
-        updateFontScale();
+        refresh();
         return this;
     }
 
-    public Font getBaseFont() {
-        return baseFont;
+    public Label setFontSize(float size) {
+        this.baseFont = baseFont.deriveFont(size);
+        refresh();
+        return this;
     }
 
     public Label setBaseFont(Font baseFont) {
         this.baseFont = baseFont;
-        updateFontScale();
+        refresh();
         return this;
     }
 
-    public Color getTextColor() {
-        return textColor;
+    public Label setAutoResizeMode(AutoResizeMode mode) {
+        this.autoResizeMode = mode;
+        refresh();
+        return this;
+    }
+
+    public Label setPadding(int padding) {
+        this.padding = padding;
+        refresh();
+        return this;
     }
 
     public Label setTextColor(Color textColor) {
@@ -206,55 +216,19 @@ public class Label extends GUIComponent {
         return this;
     }
 
-    public Color getBackgroundColor() {
-        return backgroundColor;
-    }
-
     public Label setBackgroundColor(Color backgroundColor) {
         this.backgroundColor = backgroundColor;
         return this;
     }
 
-    public int getHorizontalAlignment() {
-        return horizontalAlignment;
-    }
-
-    public Label setHorizontalAlignment(int horizontalAlignment) {
-        this.horizontalAlignment = horizontalAlignment;
+    public Label setHorizontalAlignment(int alignment) {
+        this.horizontalAlignment = alignment;
         return this;
     }
 
-    public int getVerticalAlignment() {
-        return verticalAlignment;
-    }
-
-    public Label setVerticalAlignment(int verticalAlignment) {
-        this.verticalAlignment = verticalAlignment;
+    public Label setVerticalAlignment(int alignment) {
+        this.verticalAlignment = alignment;
         return this;
-    }
-
-    public int getPadding() {
-        return padding;
-    }
-
-    public Label setPadding(int padding) {
-        this.padding = padding;
-        updateFontScale();
-        return this;
-    }
-
-    public boolean isAutoResize() {
-        return autoResize;
-    }
-
-    public Label setAutoResize(boolean autoResize) {
-        this.autoResize = autoResize;
-        updateFontScale();
-        return this;
-    }
-
-    public boolean isWordWrap() {
-        return wordWrap;
     }
 
     public Label setWordWrap(boolean wordWrap) {
@@ -262,6 +236,28 @@ public class Label extends GUIComponent {
         return this;
     }
 
+    public void refresh() {
+        updateFontScale();
+    }
+
     @Override
     public void init() {}
+
+    public String getText() {
+        return text;
+    }
+
+    public float getCornerRadius() {
+        return CornerRadius;
+    }
+
+    public Label setCornerRadius(float cornerRadius) {
+        CornerRadius = cornerRadius;
+        return this;
+    }
+    public Label setCornerRadius(int cornerRadius){
+        CornerRadius = cornerRadius;
+        return this;
+    }
+
 }

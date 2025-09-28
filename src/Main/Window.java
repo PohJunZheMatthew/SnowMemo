@@ -8,7 +8,6 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.system.MemoryUtil;
 
-import java.awt.*;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,8 +33,8 @@ public class Window {
     public final List<GLFWCharCallback> CharCallbacks = new ArrayList<>();
     public final List<GLFWDropCallback> DropCallbacks = new ArrayList<>();
     public final List<GLFWScrollCallback> ScrollCallbacks = new ArrayList<>();
-    private double mouseX;
-    private double mouseY;
+    protected double mouseX;
+    protected double mouseY;
     public double getMouseX() { return mouseX; }
     public double getMouseY() { return mouseY; }
 
@@ -108,12 +107,12 @@ public class Window {
 
         // Set up the callback forwarders that will call registered callbacks
         GLFW.glfwSetCursorPosCallback(window,((windowHandle, xpos, ypos) -> {
+            mouseX = xpos;
+            mouseY = ypos;
             // Forward to all registered callbacks
             CursorPosCallbacks.forEach(c -> {
                 try {
                     c.invoke(windowHandle, xpos, ypos);
-                    mouseX =xpos;
-                    mouseY = ypos;
                 } catch (Exception e) {
                     System.err.println("Error in cursor position callback: " + e.getMessage());
                 }

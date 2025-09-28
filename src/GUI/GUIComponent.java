@@ -1,9 +1,7 @@
 package GUI;
 
+import GUI.Events.*;
 import GUI.Events.Event;
-import GUI.Events.EventCallBack;
-import GUI.Events.MouseClickCallBack;
-import GUI.Events.MouseClickEvent;
 import Main.*;
 import Main.Window;
 import org.joml.Matrix4f;
@@ -32,13 +30,14 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 public abstract class GUIComponent implements Renderable {
-    private int widthPx = 1, heightPx = 1;
-    private int xPx = 1, yPx = 1;
+    protected int widthPx = 1, heightPx = 1;
+    protected int xPx = 1, yPx = 1;
     protected float x, y;
     protected float width, height;
     protected Texture texture;
     protected ShaderProgram shaderProgram;
-    private final int vaoId, vboId, idxVboId;
+    protected final int vaoId, vboId, idxVboId;
+    protected boolean CustomMouseEvents = false;
     private static final float[] vertices = {
             0.0f, 0.0f, 0.0f,       0.0f, 1.0f,  // U: 1.0 -> 0.0
             1.0f, 0.0f, 0.0f,       1.0f, 1.0f,  // U: 0.0 -> 1.0
@@ -49,20 +48,20 @@ public abstract class GUIComponent implements Renderable {
             0, 3, 2,
             2, 1, 0
     };
-    private final Window windowParent;
+    protected final Window windowParent;
     protected final List<EventCallBack<? extends Event>> callBacks = new ArrayList<>();
     private final static HashMap<Window, HashMap<Integer, GUIComponent>> GUIComponents = new HashMap<>();
-    private GUIComponent parent;
-    private final List<GUIComponent> children = new ArrayList<GUIComponent>();
+    protected GUIComponent parent;
+    protected final List<GUIComponent> children = new ArrayList<GUIComponent>();
 
     // Track which windows have been initialized to prevent duplicate callbacks
     private final static Set<Window> initializedWindows = new HashSet<>();
     private final static HashMap<Window, Point2D> mpos = new HashMap<>();
     private final static HashMap<Window, GLFWMouseButtonCallback> mouseButtonCallbacks = new HashMap<>();
     private final static HashMap<Window, GLFWCursorPosCallback> cursorPosCallbacks = new HashMap<>();
-
     protected int Z_Index = 0;
     protected boolean visible = true;
+    protected boolean mouseInside = false;
     Shape hitBox;
 
     public GUIComponent(Window window) {
@@ -133,7 +132,7 @@ public abstract class GUIComponent implements Renderable {
         if (success) {
             initializeWindow(window);
             GUIComponents.get(window).put(hashCode(), this);
-            hitBox = new Rectangle(xPx, yPx, widthPx, heightPx);
+            hitBox = new Rectangle(xPx,yPx,widthPx,heightPx);
         }
     }
 
@@ -159,6 +158,39 @@ public abstract class GUIComponent implements Renderable {
                     if (entry.getKey().getWindowHandle() == windowHandle) {
                         entry.setValue(new Point2D.Double(xpos, ypos));
                         break;
+                    }
+                }
+                Window targetWindow = null;
+                for (Window w : mpos.keySet()) {
+                    if (w.getWindowHandle() == windowHandle) {
+                        targetWindow = w;
+                        break;
+                    }
+                }
+                if (targetWindow != null) {
+                    var comps = GUIComponents.get(window);
+                    for (GUIComponent g : comps.values()) {
+                        if (!g.CustomMouseEvents) {
+                            final MouseEnterEvent mouseEnterEvent = new MouseEnterEvent(g, (int) xpos, (int) ypos);
+                            final MouseExitEvent mouseExitEvent = new MouseExitEvent(g, (int) xpos, (int) ypos);
+                            if (g.hitBox.contains(xpos * 2, ypos * 2) && !g.mouseInside) {
+                                g.mouseInside = true;
+                                System.out.println("Mouse Entered into: " + g.hashCode());
+                                g.callBacks.forEach(callBack -> {
+                                    if (callBack instanceof MouseEnterCallBack) {
+                                        ((MouseEnterCallBack) callBack).onEvent(mouseEnterEvent);
+                                    }
+                                });
+                            }
+                            if (!g.hitBox.contains(xpos * 2, ypos * 2) && g.mouseInside) {
+                                g.mouseInside = false;
+                                g.callBacks.forEach(callBack -> {
+                                    if (callBack instanceof MouseExitCallBack) {
+                                        ((MouseExitCallBack) callBack).onEvent(mouseExitEvent);
+                                    }
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -190,8 +222,8 @@ public abstract class GUIComponent implements Renderable {
                                         (int) mousePos.getY(),
                                         button
                                 );
-                                if (comp.visible && comp.hitBox != null &&
-                                        comp.hitBox.contains(mousePos.getX(), mousePos.getY())) {
+                                if (comp.visible && (comp.hitBox != null) &&
+                                        (comp.hitBox.contains(mousePos.getX(), mousePos.getY()) & !comp.CustomMouseEvents)) {
                                     comp.callBacks.forEach((callBack) -> {
                                         if (callBack instanceof MouseClickCallBack) {
                                             try {
@@ -234,7 +266,7 @@ public abstract class GUIComponent implements Renderable {
     }
 
     public void updateHitBox() {
-        hitBox = new Rectangle(xPx, yPx, widthPx, heightPx);
+        if (hitBox instanceof Rectangle) ((Rectangle)hitBox).setBounds(xPx,yPx,widthPx,heightPx);
     }
 
     public static void renderGUIs(Window window) {
@@ -248,14 +280,14 @@ public abstract class GUIComponent implements Renderable {
             ArrayList<GUIComponent> guiComponents = new ArrayList<>(windowComponents.values());
             guiComponents.sort(new ZSort());
             for (GUIComponent g : guiComponents) {
-                if (g.parent == null) { // Only render root components, children will be rendered recursively
+                if (g.parent == null) {
                     g.render();
                 }
             }
         }
     }
 
-    public final void render() {
+    public void render() {
         if (!visible) return;
 
         if (parent != null) {
@@ -292,12 +324,7 @@ public abstract class GUIComponent implements Renderable {
         }
     }
 
-    private void renderGUIImage() {
-//        System.out.println("hashCode() = " + hashCode());
-//        System.out.println("widthPx = " + widthPx);
-//        System.out.println("heightPx = " + heightPx);
-//        System.out.println("width = " + width);
-//        System.out.println("height = " + height);
+    protected void renderGUIImage() {
         BufferedImage bi = new BufferedImage(Math.max(1, widthPx), Math.max(1, heightPx), BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = bi.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -554,7 +581,7 @@ public abstract class GUIComponent implements Renderable {
     }
 
 
-    private static class ZSort implements Comparator<GUIComponent> {
+    protected static class ZSort implements Comparator<GUIComponent> {
         @Override
         public int compare(GUIComponent o1, GUIComponent o2) {
             return o1.Z_Index - o2.Z_Index;

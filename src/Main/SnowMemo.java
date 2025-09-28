@@ -16,7 +16,7 @@ import org.lwjgl.glfw.*;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
-import java.io.IOException;
+import java.io.*;
 import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
 import java.util.List;

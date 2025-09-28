@@ -176,15 +176,12 @@ public class TextField extends GUIComponent {
 
     private void resetCursorBlink() { showCursor = true; lastBlink = System.currentTimeMillis(); }
     private void updateCursorBlink() { if (System.currentTimeMillis() - lastBlink > CURSOR_BLINK) { showCursor = !showCursor; lastBlink = System.currentTimeMillis(); } }
-
+    private final BufferedImage measureBuffer = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+    private final Graphics2D measureGraphics = measureBuffer.createGraphics();
     private int measureTextWidth(String s) {
-        var g = new BufferedImage(1,1,BufferedImage.TYPE_INT_ARGB).createGraphics();
-        g.setFont(scaledFont);
-        int w = g.getFontMetrics().stringWidth(s);
-        g.dispose();
-        return w;
+        measureGraphics.setFont(scaledFont);
+        return measureGraphics.getFontMetrics().stringWidth(s);
     }
-
     private void updateScrollOffset() {
         int cursorX = measureTextWidth(text.substring(0, cursorPosition));
         int visibleWidth = getWidthPx() - 2 * padding;
@@ -257,12 +254,18 @@ public class TextField extends GUIComponent {
     private void moveCursorLeft(boolean shift) {
         if (shift && selectionAnchor == -1) selectionAnchor = cursorPosition;
         if (cursorPosition > 0) cursorPosition--;
+        else if (cursorPosition == 0) {
+            cursorPosition = text.length();
+        }
         updateSelection(shift);
     }
 
     private void moveCursorRight(boolean shift) {
         if (shift && selectionAnchor == -1) selectionAnchor = cursorPosition;
         if (cursorPosition < text.length()) cursorPosition++;
+        else if (cursorPosition == text.length()) {
+            cursorPosition = 0;
+        }
         updateSelection(shift);
     }
 
@@ -335,6 +338,18 @@ public class TextField extends GUIComponent {
 
     public TextField onChange(TextChangeCallBack callback) {
         addCallBack(callback);
+        return this;
+    }
+
+    public int getCursorPosition() {
+        return cursorPosition;
+    }
+
+    public TextField setCursorPosition(int cursorPosition) {
+        switch (cursorPosition) {
+            case -1 -> this.cursorPosition = text.length();
+            default->this.cursorPosition = cursorPosition;
+        }
         return this;
     }
 }
