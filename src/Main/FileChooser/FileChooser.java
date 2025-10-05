@@ -24,10 +24,10 @@ import java.util.List;
 import java.util.Locale;
 
 import static org.lwjgl.glfw.GLFW.*;
-import static org.lwjgl.opengl.GL11.glClearColor;
+import static org.lwjgl.opengl.GL11.*;
 
 public class FileChooser extends Window {
-    private FileChooser self = this;
+    private final FileChooser self = this;
     private static FileChooser currentFileChooser;
     private GUIComponent chooseFileButton, chooseFileFrame, cancelFileButton;
     private TextField fileNameTextField;
@@ -113,6 +113,7 @@ public class FileChooser extends Window {
 
         GL.createCapabilities();
         glClearColor(1f, 1f, 1f, 1f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glEnable(GL11.GL_STENCIL_TEST);
         GL11.glDisable(GL11.GL_CULL_FACE);
@@ -181,8 +182,9 @@ public class FileChooser extends Window {
         folderFrame.setBackgroundColor(SnowMemo.currentTheme.getSecondaryColors()[1]);
         folderFrame.setBorderColor(SnowMemo.currentTheme.getSecondaryColors()[0]);
         folderFrame.setShowBorder(true);
-        folderFrame.setBorderThickness(5f);
+        folderFrame.setBorderThickness(2f);
         folderFrame.setZ_Index(Short.MIN_VALUE);
+        suggestionsFrame.setZ_Index(Integer.MAX_VALUE);
         fileNameTextField = new TextField(this, 0.075f, 0.9f, 0.625f, 0.05f);
         fileNameTextField.setPlaceholder("Enter filename...")
                 .setBaseFont(SnowMemo.currentTheme.getFonts()[0])
@@ -346,7 +348,7 @@ public class FileChooser extends Window {
         float aspectRatio = (float) width / height;
         projectionMatrix = new Matrix4f().perspective(45f, aspectRatio, Z_NEAR, Z_FAR);
 
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        glClear(GL11.GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         backgroundCube.render();
         GUIComponent.renderGUIs(this);
         GLFW.glfwSwapBuffers(window);

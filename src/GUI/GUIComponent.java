@@ -9,6 +9,7 @@ import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWMouseButtonCallback;
+import org.lwjgl.system.JNI;
 import org.lwjgl.system.MemoryUtil;
 
 import java.awt.*;
@@ -90,6 +91,16 @@ public abstract class GUIComponent implements Renderable {
             glBindVertexArray(vaoId);
 
             vboId = glGenBuffers();
+
+            shaderProgram = new ShaderProgram();
+            shaderProgram.createVertexShader(loadResource("GUIVertexShader.vs"));
+            shaderProgram.createFragmentShader(loadResource("GUIFragmentShader.fs"));
+            shaderProgram.link();
+
+            shaderProgram.createUniform("position");
+            shaderProgram.createUniform("size");
+            shaderProgram.createUniform("projection");
+            shaderProgram.createUniform("guiTexture");
             glBindBuffer(GL_ARRAY_BUFFER, vboId);
             glBufferData(GL_ARRAY_BUFFER, verticesBuffer, GL_STATIC_DRAW);
 
@@ -106,16 +117,6 @@ public abstract class GUIComponent implements Renderable {
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL_STATIC_DRAW);
 
             glBindVertexArray(0);
-
-            shaderProgram = new ShaderProgram();
-            shaderProgram.createVertexShader(loadResource("GUIVertexShader.vs"));
-            shaderProgram.createFragmentShader(loadResource("GUIFragmentShader.fs"));
-            shaderProgram.link();
-
-            shaderProgram.createUniform("position");
-            shaderProgram.createUniform("size");
-            shaderProgram.createUniform("projection");
-            shaderProgram.createUniform("guiTexture");
             success = true;
         } catch (Exception e) {
             success = false;
@@ -143,14 +144,8 @@ public abstract class GUIComponent implements Renderable {
         if (initializedWindows.contains(window)) {
             return; // Already initialized
         }
-
-        // Initialize GUI components map for this window
         GUIComponents.put(window, new HashMap<>());
-
-        // Initialize mouse position tracking
         mpos.put(window, new Point2D.Double(0, 0));
-
-        // Create and store cursor position callback
         GLFWCursorPosCallback cursorCallback = new GLFWCursorPosCallback() {
             @Override
             public void invoke(long windowHandle, double xpos, double ypos) {

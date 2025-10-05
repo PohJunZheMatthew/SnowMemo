@@ -8,16 +8,22 @@ import Light.DirectionalLight;
 import Light.PointLight;
 import Main.FileChooser.FileChooser;
 import Main.Theme.Theme;
+import com.mongodb.*;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.glfw.*;
+import org.slf4j.helpers.Slf4jEnvUtil;
 
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
 import java.io.*;
-import java.text.AttributedCharacterIterator;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,11 +36,12 @@ public class SnowMemo {
     float mouseWheelVelocity = 0;
     static Camera camera = new Camera();
     double preposx,preposy = 0.0;
+    @SuppressWarnings("unused")
     static AmbientLight ambientLight = new AmbientLight(0.7f,0.7f,0.7f,1.0f);
     float zoom = 6;
-    final float originalZoom = zoom;
     float perZoom = 1.0f;
     static final int MAX_ZOOM = 10,MIN_ZOOM = 1;
+    @SuppressWarnings("unused")
     static PointLight pointLight = new PointLight(
             new Vector4f(0.3f, 0.3f, 0.3f, 1.0f),
             new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
@@ -49,10 +56,11 @@ public class SnowMemo {
             new Vector4f(1.0f, 1.0f, 1.0f, 1.0f), // specular
             2.5f // strength
     );
+    @SuppressWarnings("unused")
     static int timeOfDay = 0;
     static GUIComponent backButton;
     static FileChooser fileChooser;
-    private static Font quickSandFont;
+    private static final Font quickSandFont;
 
     static {
         try {
@@ -282,12 +290,9 @@ public class SnowMemo {
                     float dy = -(float) (diffypos / window.height);
                     float moveSpeed = 1.5f * (Math.max(10-zoom, 1.0f));
                     camera.move(new Vector3f(dx * moveSpeed, dy * moveSpeed, 0));
-                    preposx = xpos;
-                    preposy = ypos;
-                } else {
-                    preposx = xpos;
-                    preposy = ypos;
                 }
+                preposx = xpos;
+                preposy = ypos;
                 if (xpos >= 0 && xpos < window.getWidth() && ypos >= 0 && ypos < window.getHeight()) {
                     Vector3f worldPos = getWorldCoordinatesFromScreen(xpos, ypos);
                     mesh.setPosition(worldPos);
@@ -306,9 +311,49 @@ public class SnowMemo {
         renderable.forEach(Renderable::cleanUp);
     }
     public static void main(String[] args) {
-        System.setProperty("apple.awt.application.name", "My Game App");
-        System.setProperty("java.awt.headless", "true");
-        new SnowMemo();
+        System.err.println(Slf4jEnvUtil.slf4jVersion());
+        System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
+        System.setProperty("https.protocols", "TLSv1.2");
+        String connectionString = "mongodb+srv://pohjunzhematthew:Inukacom1612@snowmemo.kyxexhg.mongodb.net/?retryWrites=true&w=majority&appName=SnowMemo";
+        ServerApi serverApi = ServerApi.builder()
+                .version(ServerApiVersion.V1)
+                .build();
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(connectionString))
+                .serverApi(serverApi)
+                .build();
+        try (MongoClient mongoClient = MongoClients.create(settings)) {
+            try {
+                MongoDatabase database = mongoClient.getDatabase("SnowMemo");
+                database.runCommand(new Document("ping", 1));
+                System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
+                MongoCollection<Document> collection = (MongoCollection<Document>) database.getCollection("Users");
+                for (Document doc:collection.find()){
+                    if (doc.containsKey("user")){
+                        if (((Document)doc.get("user")).containsKey("userName")){
+                            if (((Document)doc.get("user")).get("userName").equals("Admin")){
+                                System.out.println(doc.toJson());
+                            }
+                        }
+                    }
+                }
+                mongoClient.close();
+            } catch (MongoException e) {
+                e.printStackTrace();
+            }
+        }
+        try {
+            System.setProperty("apple.awt.application.name", "SnowMemo");
+            System.setProperty("java.awt.headless", "true");
+            new SnowMemo();
+        }
+        catch (OutOfMemoryError e){
+            System.gc();
+            System.out.println("Java OutOfMemoryError: Did you set ");
+        }
+        catch (Exception e) {
+            System.err.println(e.getMessage());
+        }
     }
     public Vector3f getWorldCoordinatesFromScreen(double xpos, double ypos) {
         // --- 1) Get window size (logical window coords) and framebuffer size (physical pixels)
