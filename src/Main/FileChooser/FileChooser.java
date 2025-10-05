@@ -32,7 +32,7 @@ public class FileChooser extends Window {
     private GUIComponent chooseFileButton, chooseFileFrame, cancelFileButton;
     private TextField fileNameTextField;
     private File currentDirectory = new File("/Users/polarbear1612/Downloads/");
-    private ScrollableFrame suggestionsFrame;
+    private ScrollableFrame suggestionsFrame, folderFrame;
     private Mesh backgroundCube;
     private final List<Label> suggestionLabels = new ArrayList<>();
     private int selectedSuggestionIndex = -1;
@@ -171,16 +171,23 @@ public class FileChooser extends Window {
     }
 
     public void initGUI() {
-        suggestionsFrame = new ScrollableFrame(this, 0.075f, 0.7f, 0.626f, 0.2f);
+        suggestionsFrame = new ScrollableFrame(this, 0.075f, 0.7f, 0.625f, 0.2f);
         suggestionsFrame.setSmoothScrollEnabled(false);
         suggestionsFrame.setCornerRadius(15);
         suggestionsFrame.setVisible(false);
+        folderFrame = new ScrollableFrame(this,0.05f,0.05f,0.2f,0.825f);
+        folderFrame.setSmoothScrollEnabled(false);
+        folderFrame.setCornerRadius(30);
+        folderFrame.setBackgroundColor(SnowMemo.currentTheme.getSecondaryColors()[1]);
+        folderFrame.setBorderColor(SnowMemo.currentTheme.getSecondaryColors()[0]);
+        folderFrame.setShowBorder(true);
+        folderFrame.setBorderThickness(5f);
+        folderFrame.setZ_Index(Short.MIN_VALUE);
         fileNameTextField = new TextField(this, 0.075f, 0.9f, 0.625f, 0.05f);
         fileNameTextField.setPlaceholder("Enter filename...")
                 .setBaseFont(SnowMemo.currentTheme.getFonts()[0])
                 .setFocused(true)
                 .setCornerRadius(30);
-
         fileNameTextField.onChange(new TextChangeCallBack() {
             @Override
             public void onEvent(TextChangeEvent event) {

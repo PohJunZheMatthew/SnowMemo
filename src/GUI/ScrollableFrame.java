@@ -53,6 +53,7 @@ public class ScrollableFrame extends GUIComponent {
     private Color backgroundColor = Color.WHITE;
     private boolean showBorder = true;
     private Color borderColor = Color.LIGHT_GRAY;
+    private float borderThickness = 1f;
     private int scrollSpeed = SCROLL_SPEED;
     private int contentPadding = CONTENT_PADDING;
     private float nextChildY = 0f;
@@ -270,12 +271,27 @@ public class ScrollableFrame extends GUIComponent {
         }
 
         if (showBorder) {
+            Stroke s = g2.getStroke();
             g2.setColor(borderColor);
+            g2.setStroke(new BasicStroke(borderThickness));
             if (cornerRadius > 0) {
-                g2.drawRoundRect(0, 0, getWidthPx() - 1, getHeightPx() - 1, cornerRadius, cornerRadius);
+                float half = borderThickness / 2f;
+                g2.drawRoundRect(
+                        Math.round(half),
+                        Math.round(half),
+                        Math.round(getWidthPx() - borderThickness),
+                        Math.round(getHeightPx() - borderThickness),
+                        cornerRadius,
+                        cornerRadius
+                );
             } else {
-                g2.drawRect(0, 0, getWidthPx() - 1, getHeightPx() - 1);
+                float half = borderThickness / 2f;
+                g2.drawRect(Math.round(half),
+                        Math.round(half),
+                        Math.round(getWidthPx() - borderThickness),
+                        Math.round(getHeightPx() - borderThickness));
             }
+            g2.setStroke(s);
         }
 
         Shape oldClip = g2.getClip();
@@ -505,6 +521,15 @@ public class ScrollableFrame extends GUIComponent {
     public void scrollToBottom() { setScrollY(getMaxScrollY()); }
     public void scrollToLeft() { setScrollX(0); }
     public void scrollToRight() { setScrollX(getMaxScrollX()); }
+
+    public float getBorderThickness() {
+        return borderThickness;
+    }
+
+    public ScrollableFrame setBorderThickness(float borderThickness) {
+        this.borderThickness = borderThickness;
+        return this;
+    }
 
     public Color getBackgroundColor() { return backgroundColor; }
     public ScrollableFrame setBackgroundColor(Color backgroundColor) {
