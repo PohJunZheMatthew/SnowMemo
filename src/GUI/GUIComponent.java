@@ -163,7 +163,7 @@ public abstract class GUIComponent implements Renderable {
                     }
                 }
                 if (targetWindow != null) {
-                    var comps = GUIComponents.get(window);
+                    var comps = GUIComponents.get(targetWindow);
                     for (GUIComponent g : comps.values()) {
                         if (!g.CustomMouseEvents) {
                             final MouseEnterEvent mouseEnterEvent = new MouseEnterEvent(g, (int) xpos, (int) ypos);
@@ -192,8 +192,6 @@ public abstract class GUIComponent implements Renderable {
         };
         cursorPosCallbacks.put(window, cursorCallback);
         window.CursorPosCallbacks.add(cursorCallback);
-
-        // Create and store mouse button callback
         GLFWMouseButtonCallback mouseCallback = new GLFWMouseButtonCallback() {
             @Override
             public void invoke(long windowHandle, int button, int action, int mods) {
@@ -205,7 +203,6 @@ public abstract class GUIComponent implements Renderable {
                             break;
                         }
                     }
-
                     if (targetWindow != null) {
                         Point2D mousePos = mpos.get(targetWindow);
                         HashMap<Integer, GUIComponent> windowComponents = GUIComponents.get(targetWindow);
@@ -218,7 +215,7 @@ public abstract class GUIComponent implements Renderable {
                                         button
                                 );
                                 if (comp.visible && (comp.hitBox != null) &&
-                                        (comp.hitBox.contains(mousePos.getX(), mousePos.getY()) & !comp.CustomMouseEvents)) {
+                                        (comp.hitBox.contains(mousePos.getX()*2, mousePos.getY()*2) & !comp.CustomMouseEvents)) {
                                     comp.callBacks.forEach((callBack) -> {
                                         if (callBack instanceof MouseClickCallBack) {
                                             try {

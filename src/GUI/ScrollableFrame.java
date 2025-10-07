@@ -206,7 +206,6 @@ public class ScrollableFrame extends GUIComponent {
         if (!visible) return;
         Point2D mousePos = new Point((int) getMousePos(getWindowParent()).getX()*2, (int) getMousePos(getWindowParent()).getY()*2);
         if (mousePos == null) return;
-        System.out.println("E");
 
         if (!hitBox.contains(mousePos)) return;
         if (verticalScrollbarVisible && verticalTrackBounds.contains(mousePos)) return;

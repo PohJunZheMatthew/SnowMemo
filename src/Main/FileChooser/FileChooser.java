@@ -29,11 +29,14 @@ import static org.lwjgl.opengl.GL11.*;
 public class FileChooser extends Window {
     private final FileChooser self = this;
     private static FileChooser currentFileChooser;
+    @SuppressWarnings("FieldCanBeLocal")
     private GUIComponent chooseFileButton, chooseFileFrame, cancelFileButton;
     private TextField fileNameTextField;
+    @SuppressWarnings("FieldMayBeFinal")
     private File currentDirectory = new File("/Users/polarbear1612/Downloads/");
+    @SuppressWarnings("FieldCanBeLocal")
     private ScrollableFrame suggestionsFrame, folderFrame;
-    private Mesh backgroundCube;
+    private final Mesh backgroundCube;
     private final List<Label> suggestionLabels = new ArrayList<>();
     private int selectedSuggestionIndex = -1;
 
@@ -73,7 +76,7 @@ public class FileChooser extends Window {
         window = GLFW.glfwCreateWindow(w, h, "Choose File", MemoryUtil.NULL, parentHandle);
         if (window == MemoryUtil.NULL) throw new RuntimeException("Failed to create FileChooser window");
 
-        GLFW.glfwSetFramebufferSizeCallback(window, ((windowHandle, width, height) -> {
+        GLFW.glfwSetFramebufferSizeCallback(window, ((_, width, height) -> {
             this.width = width;
             this.height = height;
         }));
@@ -184,63 +187,57 @@ public class FileChooser extends Window {
         folderFrame.setShowBorder(true);
         folderFrame.setBorderThickness(2f);
         folderFrame.setZ_Index(Short.MIN_VALUE);
+
         suggestionsFrame.setZ_Index(Integer.MAX_VALUE);
         fileNameTextField = new TextField(this, 0.075f, 0.9f, 0.625f, 0.05f);
         fileNameTextField.setPlaceholder("Enter filename...")
                 .setBaseFont(SnowMemo.currentTheme.getFonts()[0])
                 .setFocused(true)
                 .setCornerRadius(30);
-        fileNameTextField.onChange(new TextChangeCallBack() {
-            @Override
-            public void onEvent(TextChangeEvent event) {
-                String fileName = event.getNewText().trim();
-                suggestionsFrame.clearChildren();
-                suggestionLabels.clear();
-                selectedSuggestionIndex = -1;
+        fileNameTextField.setZ_Index(Short.MAX_VALUE);
+        fileNameTextField.onChange(event -> {
+            String fileName = event.getNewText().trim();
+            suggestionsFrame.clearChildren();
+            suggestionLabels.clear();
+            selectedSuggestionIndex = -1;
 
-                File[] files = currentDirectory.listFiles();
-                if (files != null && !fileName.isEmpty()) {
-                    for (File file : files) {
-                        if (file.getName().toLowerCase(Locale.ROOT).contains(fileName.toLowerCase(Locale.ROOT))) {
-                            Label suggestionLabel = new Label(self, file.getName());
-                            suggestionLabel
-                                    .setCornerRadius(12)
-                                    .setBaseFont(SnowMemo.currentTheme.getFonts()[0].deriveFont(Font.PLAIN, 16f))
-                                    .setPadding(10)
-                                    .setWidth(1.0f)
-                                    .setHeight(0.15f);
-                            suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200));
-                            suggestionLabel.setTextColor(new Color(33, 37, 41));
-                            suggestionLabel.addCallBack(new MouseEnterCallBack(){
-                                @Override
-                            public void onEvent(MouseEnterEvent e) {
-                                    System.out.println("Color change");
-                                suggestionLabel.setBackgroundColor(new Color(230, 240, 255));
+            File[] files = currentDirectory.listFiles();
+            if (files != null && !fileName.isEmpty()) {
+                for (File file : files) {
+                    if (file.getName().toLowerCase(Locale.ROOT).contains(fileName.toLowerCase(Locale.ROOT))) {
+                        Label suggestionLabel = new Label(self, file.getName());
+                        suggestionLabel
+                                .setCornerRadius(12)
+                                .setBaseFont(SnowMemo.currentTheme.getFonts()[0].deriveFont(Font.PLAIN, 16f))
+                                .setPadding(10)
+                                .setWidth(1.0f)
+                                .setHeight(0.15f);
+                        suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200));
+                        suggestionLabel.setTextColor(new Color(33, 37, 41));
+                        suggestionLabel.addCallBack((MouseEnterCallBack) _ -> {
+                        suggestionLabel.setBackgroundColor(new Color(230, 240, 255));
+                    });
+                        suggestionLabel.addCallBack(new MouseExitCallBack(){
+                            @Override
+                            public void onEvent(MouseExitEvent e){
+                                suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200));
                             }
-                            });
-                            suggestionLabel.addCallBack(new MouseExitCallBack(){
-                                @Override
-                                public void onEvent(MouseExitEvent e){
-                                    System.out.println("Change color");
-                                    suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200));
-                                }
-                            });
-                            if (suggestionLabels.size() == selectedSuggestionIndex) {
-                                suggestionLabel.setBackgroundColor(SnowMemo.currentTheme.getSecondaryColors()[1]);
-                                suggestionLabel.setTextColor(Color.WHITE);
-                            }
-                            suggestionLabel.addCallBack((MouseClickCallBack) e -> {
-                                fileNameTextField.setText(suggestionLabel.getText());
-                                fileNameTextField.setCursorPosition(-1);
-                            });
-                            suggestionsFrame.addChild(suggestionLabel);
-                            suggestionLabels.add(suggestionLabel);
+                        });
+                        if (suggestionLabels.size() == selectedSuggestionIndex) {
+                            suggestionLabel.setBackgroundColor(SnowMemo.currentTheme.getSecondaryColors()[1]);
+                            suggestionLabel.setTextColor(Color.WHITE);
                         }
+                        suggestionLabel.addCallBack((MouseClickCallBack) e -> {
+                            fileNameTextField.setText(suggestionLabel.getText());
+                            fileNameTextField.setCursorPosition(-1);
+                        });
+                        suggestionsFrame.addChild(suggestionLabel);
+                        suggestionLabels.add(suggestionLabel);
                     }
-                    suggestionsFrame.setVisible(true);
-                }else{
-                    suggestionsFrame.setVisible(false);
                 }
+                suggestionsFrame.setVisible(true);
+            }else{
+                suggestionsFrame.setVisible(false);
             }
         });
 
@@ -356,8 +353,25 @@ public class FileChooser extends Window {
     }
 
     public File chooseFile() {
-        GLFW.glfwShowWindow(window);
-        return null;
+        glfwShowWindow(window);
+        final File[] returnFile = {new File("")};
+        final boolean[] running = {true};
+        MouseClickCallBack mouseClickCallBack = (MouseClickCallBack) e -> {
+            returnFile[0] = new File(currentDirectory.getPath()+"/"+fileNameTextField.getText());
+            if (returnFile[0].exists()&&returnFile[0].isFile()) {
+                running[0] = false;
+            }
+        };
+        chooseFileButton.addCallBack(mouseClickCallBack);
+        while (running[0]){
+            render();
+            if (GLFW.glfwWindowShouldClose(window)){
+                break;
+            }
+        }
+        GLFW.glfwHideWindow(window);
+        chooseFileButton.removeCallBack(mouseClickCallBack);
+        return returnFile[0];
     }
 
     public static FileChooser getCurrentFileChooser() {

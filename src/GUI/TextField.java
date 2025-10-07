@@ -38,7 +38,7 @@ public class TextField extends GUIComponent {
 
     private int scrollOffset = 0;
     private int selectionAnchor = -1;
-
+    @SuppressWarnings("unused")
     public TextField(Window window) { this(window, 0.3f, 0.06f); }
     public TextField(Window window, float width, float height) { this(window, 0, 0, width, height); }
     public TextField(Window window, float x, float y, float width, float height) {
@@ -133,13 +133,15 @@ public class TextField extends GUIComponent {
             case GLFW.GLFW_KEY_END -> moveCursorEnd(shift);
             case GLFW.GLFW_KEY_A -> { if (ctrl) selectAll(); }
             case GLFW.GLFW_KEY_C -> { if (ctrl && hasSelection()) copyToClipboard(getSelectedText()); }
-            case GLFW.GLFW_KEY_V -> { if (ctrl) { String clip = getFromClipboard(); if (clip != null) insertText(clip); } }
+            case GLFW.GLFW_KEY_V -> { if (ctrl) { String clip = getFromClipboard();
+                insertText(clip);
+            } }
             case GLFW.GLFW_KEY_X -> { if (ctrl && hasSelection()) { copyToClipboard(getSelectedText()); deleteSelection(); fireTextChangeEvent(oldText); } }
         }
         resetCursorBlink();
         updateScrollOffset();
     }
-
+    @SuppressWarnings("unused")
     private void handleChar(char c) { if (c >= 32 && c != 127) insertText(String.valueOf(c)); }
 
     private void insertText(String str) {
@@ -306,29 +308,51 @@ public class TextField extends GUIComponent {
         fireTextChangeEvent(oldText);
         return this;
     }
-
+    @SuppressWarnings("unused")
     public TextField setPlaceholder(String p) { placeholder = p; return this; }
+    @SuppressWarnings("unused")
     public Font getBaseFont() { return baseFont; }
+    @SuppressWarnings("unused")
     public TextField setBaseFont(Font baseFont) { this.baseFont = baseFont; this.scaledFont = baseFont; return this; }
+    @SuppressWarnings("unused")
     public Color getTextColor() { return textColor; }
+    @SuppressWarnings("unused")
     public TextField setTextColor(Color textColor) { this.textColor = textColor; return this; }
+    @SuppressWarnings("unused")
     public Color getBackgroundColor() { return backgroundColor; }
+    @SuppressWarnings("unused")
     public TextField setBackgroundColor(Color backgroundColor) { this.backgroundColor = backgroundColor; return this; }
+    @SuppressWarnings("unused")
     public Color getBorderColor() { return borderColor; }
+    @SuppressWarnings("unused")
     public TextField setBorderColor(Color borderColor) { this.borderColor = borderColor; return this; }
+    @SuppressWarnings("unused")
     public Color getFocusedBorderColor() { return focusedBorderColor; }
+    @SuppressWarnings("unused")
     public TextField setFocusedBorderColor(Color focusedBorderColor) { this.focusedBorderColor = focusedBorderColor; return this; }
+    @SuppressWarnings("unused")
     public Color getPlaceholderColor() { return placeholderColor; }
+    @SuppressWarnings("unused")
     public TextField setPlaceholderColor(Color placeholderColor) { this.placeholderColor = placeholderColor; return this; }
+    @SuppressWarnings("unused")
     public Color getSelectionColor() { return selectionColor; }
+    @SuppressWarnings("unused")
     public TextField setSelectionColor(Color selectionColor) { this.selectionColor = selectionColor; return this; }
+    @SuppressWarnings("unused")
     public Color getCursorColor() { return cursorColor; }
+    @SuppressWarnings("unused")
     public TextField setCursorColor(Color cursorColor) { this.cursorColor = cursorColor; return this; }
+    @SuppressWarnings("unused")
     public int getBorderWidth() { return borderWidth; }
+    @SuppressWarnings("unused")
     public TextField setBorderWidth(int borderWidth) { this.borderWidth = borderWidth; return this; }
+    @SuppressWarnings("unused")
     public int getPadding() { return padding; }
+    @SuppressWarnings("unused")
     public TextField setPadding(int padding) { this.padding = padding; return this; }
+    @SuppressWarnings("unused")
     public int getCornerRadius() { return cornerRadius; }
+    @SuppressWarnings("UnusedReturnValue")
     public TextField setCornerRadius(int cornerRadius) { this.cornerRadius = cornerRadius; return this; }
 
     @Override
@@ -336,20 +360,52 @@ public class TextField extends GUIComponent {
 
     public TextField setFocused(boolean b) { this.focused = b; return this; }
 
+    @SuppressWarnings("UnusedReturnValue")
     public TextField onChange(TextChangeCallBack callback) {
         addCallBack(callback);
         return this;
     }
-
+    @SuppressWarnings("unused")
     public int getCursorPosition() {
         return cursorPosition;
     }
-
+    public static final int CURSOR_START = -3;
+    public static final int CURSOR_MIDDLE = -2;
+    public static final int CURSOR_END = -1;
+    public static final int CURSOR_BEFORE_VOWEL = -4;
+    public static final int CURSOR_AFTER_SPACE = -5;
+    public static final int CURSOR_RANDOM = -6;
+    @SuppressWarnings("UnusedReturnValue")
     public TextField setCursorPosition(int cursorPosition) {
+        if (text == null) text = "";
         switch (cursorPosition) {
-            case -1 -> this.cursorPosition = text.length();
-            default->this.cursorPosition = cursorPosition;
+            case CURSOR_START -> this.cursorPosition = 0;
+            case CURSOR_MIDDLE -> this.cursorPosition = text.length() / 2;
+            case CURSOR_END -> this.cursorPosition = text.length();
+            case CURSOR_BEFORE_VOWEL -> this.cursorPosition = findFirstVowel();
+            case CURSOR_AFTER_SPACE -> this.cursorPosition = findFirstSpaceAfterCursor();
+            case CURSOR_RANDOM -> this.cursorPosition = (int) (Math.random() * text.length());
+            default -> this.cursorPosition = clamp(cursorPosition);
         }
         return this;
+    }
+
+    private int clamp(int pos) {
+        return Math.max(0, Math.min(pos, text.length()));
+    }
+
+    private int findFirstVowel() {
+        String lower = text.toLowerCase();
+        for (int i = 0; i < lower.length(); i++) {
+            if ("aeiou".indexOf(lower.charAt(i)) >= 0) return i;
+        }
+        return 0;
+    }
+
+    private int findFirstSpaceAfterCursor() {
+        for (int i = cursorPosition; i < text.length(); i++) {
+            if (text.charAt(i) == ' ') return i + 1;
+        }
+        return text.length();
     }
 }
