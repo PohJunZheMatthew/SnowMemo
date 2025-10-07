@@ -147,8 +147,6 @@ public class Mesh implements Renderable {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idxVboId);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL_STATIC_DRAW);
 
-            glBindVertexArray(0);
-
             // === Shader setup ===
             shaderProgram = new ShaderProgram();
             shaderProgram.createVertexShader(Utils.loadResource("Vertex.vs"));
@@ -163,6 +161,8 @@ public class Mesh implements Renderable {
             shaderProgram.createUniform("light.radius");
             shaderProgram.createUniform("normalMatrix"); // Use proper normal matrix
             shaderProgram.createUniform("lightSpaceMatrix");
+
+            glBindVertexArray(0);
             memFree(indicesBuffer);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -215,8 +215,6 @@ public class Mesh implements Renderable {
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, idxVboId);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicesBuffer, GL_STATIC_DRAW);
 
-            glBindVertexArray(0);
-
             // === Setup shader ===
             shaderProgram = new ShaderProgram();
             shaderProgram.createVertexShader(Utils.loadResource("Vertex.vs"));
@@ -230,6 +228,7 @@ public class Mesh implements Renderable {
             shaderProgram.createUniform("diffuseSampler");
             shaderProgram.createUniform("useTextures");
 
+            glBindVertexArray(0);
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
@@ -297,6 +296,9 @@ public class Mesh implements Renderable {
         return vertexCount;
     }
     public void render() {
+        render(SnowMemo.camera);
+    }
+    public void render(Camera camera){
         GL11.glLineWidth(1);
 
         // Ensure all required uniforms exist
@@ -327,13 +329,13 @@ public class Mesh implements Renderable {
 
         shaderProgram.setUniform("projectionMatrix", win.getProjectionMatrix());
 
-        Matrix4f modelViewMatrix = new Matrix4f(SnowMemo.camera.getViewMatrix()).mul(modelMatrix);
+        Matrix4f modelViewMatrix = new Matrix4f(camera.getViewMatrix()).mul(modelMatrix);
         Matrix3f normalMatrix = new Matrix3f();
         modelViewMatrix.invert().transpose().get3x3(normalMatrix);
         shaderProgram.setUniform("normalMatrix", normalMatrix);
 
         try {
-            SnowMemo.camera.setViewMatrixUniform(shaderProgram);
+            camera.setViewMatrixUniform(shaderProgram);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -397,7 +399,6 @@ public class Mesh implements Renderable {
         if (texture != null) texture.unbind();
         shaderProgram.unbind();
     }
-
     public void cleanUp() {
         glDisableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);

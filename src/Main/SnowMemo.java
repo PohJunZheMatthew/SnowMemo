@@ -93,9 +93,7 @@ public class SnowMemo {
     public SnowMemo(){
         window = new Window("Snow Memo");
         fileChooser = new FileChooser();
-        fileChooser.chooseFile();
 //        renderable.add(new Mesh(Mesh.CUBE_POS_UV,Mesh.CUBE_INDICES,window,Texture.loadTexture(this.getClass().getResourceAsStream("2025-03-29T10:45:07.749198.png"))));
-
         renderable.add(new Baseplate());
         mesh = Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"));
         renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj")));
@@ -207,7 +205,7 @@ public class SnowMemo {
         backButton.addCallBack(new MouseClickCallBack() {
             @Override
             public void onEvent(MouseClickEvent e) {
-                System.out.println("Back btn has been pressed");
+                System.out.println("fileChooser.chooseFile() = " + fileChooser.chooseFile());
             }
         });
         try {

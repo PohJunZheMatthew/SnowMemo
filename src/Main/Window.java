@@ -77,6 +77,7 @@ public class Window {
         }
         window = GLFW.glfwCreateWindow(w, h, title, MemoryUtil.NULL, MemoryUtil.NULL);
         if (window == MemoryUtil.NULL) throw new RuntimeException("Failed to create window");
+        GLFW.glfwSetWindowSizeLimits(window,w/2,h/2,GLFW.GLFW_DONT_CARE,GLFW.GLFW_DONT_CARE);
         GLFW.glfwSetFramebufferSizeCallback(window, ((window, width, height) -> {
             this.width = width;
             this.height = height;
@@ -185,7 +186,7 @@ public class Window {
                 Z_NEAR, Z_FAR);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         for (Renderable m:meshes) {
-            m.render();
+            if (m instanceof Mesh) ((Mesh) m).render(SnowMemo.camera); else m.render();
         }
         GUIComponent.renderGUIs(this);
         GLFW.glfwSwapBuffers(window);

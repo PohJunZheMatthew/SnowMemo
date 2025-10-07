@@ -5,9 +5,7 @@ import GUI.GUIComponent;
 import GUI.Label;
 import GUI.ScrollableFrame;
 import GUI.TextField;
-import Main.Mesh;
-import Main.SnowMemo;
-import Main.Utils;
+import Main.*;
 import Main.Window;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -22,6 +20,7 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -33,13 +32,14 @@ public class FileChooser extends Window {
     private GUIComponent chooseFileButton, chooseFileFrame, cancelFileButton;
     private TextField fileNameTextField;
     @SuppressWarnings("FieldMayBeFinal")
-    private File currentDirectory = new File("/Users/polarbear1612/Downloads/");
+    private File currentDirectory = new File("/Users/polarbear1612/Downloads/"),previousDirectory = new File("/Users/polarbear1612/Downloads/");
     @SuppressWarnings("FieldCanBeLocal")
     private ScrollableFrame suggestionsFrame, folderFrame;
     private final Mesh backgroundCube;
     private final List<Label> suggestionLabels = new ArrayList<>();
     private int selectedSuggestionIndex = -1;
-
+    private Camera camera;
+    private ArrayList<FileChooserIcon> fileChooserIcons = new ArrayList<>();
     public FileChooser() {
         long monitor = GLFW.glfwGetPrimaryMonitor();
         if (monitor == 0L) throw new IllegalStateException("No primary monitor found");
@@ -159,7 +159,7 @@ public class FileChooser extends Window {
 
         GLFW.glfwMakeContextCurrent(oldContext);
         backgroundCube = Utils.loadObj(SnowMemo.class.getResourceAsStream("Cube.obj"))
-                .setScale(new Vector3f(1,2.5f,3f)).setPosition(new Vector3f(1f,0,0f));
+                .setScale(new Vector3f(1,2.5f,2.5f)).setPosition(new Vector3f(1.25f,0,0f));
         initGUI();
     }
 
@@ -175,6 +175,7 @@ public class FileChooser extends Window {
     }
 
     public void initGUI() {
+        camera = new Camera();
         suggestionsFrame = new ScrollableFrame(this, 0.075f, 0.7f, 0.625f, 0.2f);
         suggestionsFrame.setSmoothScrollEnabled(false);
         suggestionsFrame.setCornerRadius(15);
@@ -204,7 +205,7 @@ public class FileChooser extends Window {
             File[] files = currentDirectory.listFiles();
             if (files != null && !fileName.isEmpty()) {
                 for (File file : files) {
-                    if (file.getName().toLowerCase(Locale.ROOT).contains(fileName.toLowerCase(Locale.ROOT))) {
+                    if (file.getName().toLowerCase(Locale.ROOT).contains(fileName.toLowerCase(Locale.ROOT))&&file.isFile()) {
                         Label suggestionLabel = new Label(self, file.getName());
                         suggestionLabel
                                 .setCornerRadius(12)
@@ -334,9 +335,12 @@ public class FileChooser extends Window {
 
     public void render() {
         long oldContext = GLFW.glfwGetCurrentContext();
+        if (GLFW.glfwWindowShouldClose(oldContext)){
+            this.close();
+            return;
+        }
         GLFW.glfwMakeContextCurrent(this.window);
         GLFW.glfwPollEvents();
-
         glClearColor(SnowMemo.currentTheme.getMainColor().getRed(),
                 SnowMemo.currentTheme.getMainColor().getGreen(),
                 SnowMemo.currentTheme.getMainColor().getBlue(),
@@ -346,15 +350,29 @@ public class FileChooser extends Window {
         projectionMatrix = new Matrix4f().perspective(45f, aspectRatio, Z_NEAR, Z_FAR);
 
         glClear(GL11.GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        backgroundCube.render();
+        backgroundCube.render(camera);
+        for (FileChooserIcon fileChooserIcon:fileChooserIcons){
+            fileChooserIcon.render();
+        }
         GUIComponent.renderGUIs(this);
         GLFW.glfwSwapBuffers(window);
         GLFW.glfwMakeContextCurrent(oldContext);
     }
-
+    public void update(){
+        if (!previousDirectory.getAbsolutePath().equals(currentDirectory.getAbsolutePath())){
+            previousDirectory = currentDirectory;
+            fileChooserIcons.clear();
+            for (File file: Objects.requireNonNull(currentDirectory.listFiles())){
+                if (file.isFile()&&!file.isHidden()){
+                    FileIcon fileChooserIcon = new FileIcon(file);
+                    fileChooserIcons.add(fileChooserIcon);
+                }
+            }
+        }
+    }
     public File chooseFile() {
         glfwShowWindow(window);
-        final File[] returnFile = {new File("")};
+        final File[] returnFile = {null};
         final boolean[] running = {true};
         MouseClickCallBack mouseClickCallBack = (MouseClickCallBack) e -> {
             returnFile[0] = new File(currentDirectory.getPath()+"/"+fileNameTextField.getText());
@@ -370,6 +388,7 @@ public class FileChooser extends Window {
             }
         }
         GLFW.glfwHideWindow(window);
+        GLFW.glfwSetWindowShouldClose(window,false);
         chooseFileButton.removeCallBack(mouseClickCallBack);
         return returnFile[0];
     }
@@ -384,5 +403,21 @@ public class FileChooser extends Window {
         Callbacks.glfwFreeCallbacks(window);
         GLFW.glfwDestroyWindow(window);
         GLFW.glfwSetWindowShouldClose(window, true);
+    }
+    private static abstract class FileChooserIcon {
+        Mesh mesh;
+        File file;
+        public abstract void render();
+    }
+    private static class FileIcon extends FileChooserIcon {
+        final Mesh mesh;
+        final File file;
+        public FileIcon(File file){
+            this.mesh = Utils.loadObj(this.getClass().getResourceAsStream("File.obj"));
+            this.file = file;
+        }
+        public void render(){
+            mesh.render(currentFileChooser.camera);
+        }
     }
 }
