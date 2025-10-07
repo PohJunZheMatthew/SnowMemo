@@ -190,6 +190,7 @@ public class FileChooser extends Window {
                 .setBaseFont(SnowMemo.currentTheme.getFonts()[0])
                 .setFocused(true)
                 .setCornerRadius(30);
+        fileNameTextField.setZ_Index(Short.MAX_VALUE);
         fileNameTextField.onChange(new TextChangeCallBack() {
             @Override
             public void onEvent(TextChangeEvent event) {
@@ -356,8 +357,25 @@ public class FileChooser extends Window {
     }
 
     public File chooseFile() {
-        GLFW.glfwShowWindow(window);
-        return null;
+        glfwShowWindow(window);
+        final File[] returnFile = {new File("")};
+        final boolean[] running = {true};
+        MouseClickCallBack mouseClickCallBack = (MouseClickCallBack) e -> {
+            returnFile[0] = new File(currentDirectory.getPath()+"/"+fileNameTextField.getText());
+            if (returnFile[0].exists()&&returnFile[0].isFile()) {
+                running[0] = false;
+            }
+        };
+        chooseFileButton.addCallBack(mouseClickCallBack);
+        while (running[0]){
+            render();
+            if (GLFW.glfwWindowShouldClose(window)){
+                break;
+            }
+        }
+        GLFW.glfwHideWindow(window);
+        chooseFileButton.removeCallBack(mouseClickCallBack);
+        return returnFile[0];
     }
 
     public static FileChooser getCurrentFileChooser() {

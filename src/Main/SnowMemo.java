@@ -207,7 +207,7 @@ public class SnowMemo {
         backButton.addCallBack(new MouseClickCallBack() {
             @Override
             public void onEvent(MouseClickEvent e) {
-                System.out.println("E");
+                System.out.println("Back btn has been pressed");
             }
         });
         try {
