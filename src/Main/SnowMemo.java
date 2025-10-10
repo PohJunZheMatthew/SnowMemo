@@ -300,7 +300,6 @@ public class SnowMemo {
         window.show();
         while (!glfwWindowShouldClose(window.window)){
             window.render(renderable);
-            fileChooser.render();
         }
         cleanUp();
         window.close();

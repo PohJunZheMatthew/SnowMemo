@@ -79,7 +79,7 @@ public class Camera {
         }
     }
 
-    CameraMovement cameraMovement = CameraMovement.ZoomInAndOut;
+    public CameraMovement cameraMovement = CameraMovement.ZoomInAndOut;
 
     public void setViewMatrixUniform(ShaderProgram shaderProgram) throws Exception {
         updateViewMatrix();

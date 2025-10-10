@@ -110,7 +110,7 @@ public class Texture {
 
         return new Texture(texId);
     }
-
+    
     private static byte[] getRGBA(BufferedImage image, boolean flipY) {
         int width = image.getWidth();
         int height = image.getHeight();

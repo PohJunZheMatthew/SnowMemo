@@ -50,38 +50,36 @@ uniform vec4 overrideColor;
 uniform sampler2D diffuseSampler;
 uniform bool useTextures;
 
-const float PI = 3.14159265359;
-const float EPSILON = 1e-6;
-const float INV_PI = 0.31830988618;
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+const float PI       = 3.14159265359;
+const float EPSILON  = 1e-6;
+const float INV_PI   = 0.31830988618;
 
-// Optimized Fresnel-Schlick with single pow() call
+// -----------------------------------------------------------------------------
+// Utility Functions
+// -----------------------------------------------------------------------------
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    // Slightly optimized version with clamp for stability
     float f = clamp(1.0 - cosTheta, 0.0, 1.0);
-    return F0 + (1.0 - F0) * pow(f, 5.0);
+    float f2 = f * f;
+    float f5 = f2 * f2 * f;
+    return F0 + (1.0 - F0) * f5;
 }
 
-// Roughness remapping for more intuitive control
-float remapRoughness(float roughness) {
-    return roughness * roughness;
-}
-
-// Optimized GGX NDF with better numerical stability
 float distributionGGX(vec3 N, vec3 H, float roughness) {
-    float a = remapRoughness(roughness);
+    float a = roughness * roughness;
     float a2 = a * a;
     float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH * NdotH;
-
-    float denom = NdotH2 * (a2 - 1.0) + 1.0;
+    float denom = (NdotH * NdotH) * (a2 - 1.0) + 1.0;
     return a2 / max(PI * denom * denom, EPSILON);
 }
 
-// Optimized geometry function using direct calculation
 float geometrySchlickGGX(float NdotV, float roughness) {
-    float a = remapRoughness(roughness);
-    float k = a * 0.5; // Direct lighting k
-    float denom = NdotV * (1.0 - k) + k;
-    return NdotV / max(denom, EPSILON);
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / max(NdotV * (1.0 - k) + k, EPSILON);
 }
 
 float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
@@ -90,53 +88,15 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
     return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
 }
 
-// Improved attenuation with smoother falloff
 float calculateAttenuation(float distance, float radius) {
-    // Inverse square law with linear and quadratic terms
-    float attenuation = 1.0 / max(lightConstant + lightLinear * distance + lightQuadratic * distance * distance, EPSILON);
-
-    // Smooth radius cutoff with improved falloff curve
+    float att = 1.0 / max(lightConstant + lightLinear * distance + lightQuadratic * distance * distance, EPSILON);
     if (radius > 0.0) {
-        float normalizedDist = distance / radius;
-        float falloff = clamp(1.0 - normalizedDist, 0.0, 1.0);
-        // Smoother falloff curve using smoothstep-like function
-        falloff = falloff * falloff * (3.0 - 2.0 * falloff);
-        attenuation *= falloff;
+        float x = clamp(1.0 - distance / radius, 0.0, 1.0);
+        att *= x * x * (3.0 - 2.0 * x);
     }
-
-    return attenuation;
+    return att;
 }
 
-// Optimized Cook-Torrance BRDF
-vec3 cookTorranceBRDF(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness, vec3 F0) {
-    vec3 H = normalize(V + L);
-
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float HdotV = max(dot(H, V), 0.0);
-
-    // Early exit for back-facing surfaces
-    if (NdotL <= 0.0) return vec3(0.0);
-
-    float NDF = distributionGGX(N, H, roughness);
-    float G = geometrySmith(N, V, L, roughness);
-    vec3 F = fresnelSchlick(HdotV, F0);
-
-    // Energy conservation
-    vec3 kS = F;
-    vec3 kD = (1.0 - metallic) * (vec3(1.0) - kS);
-
-    // Lambertian diffuse
-    vec3 diffuse = kD * albedo * INV_PI;
-
-    // Specular BRDF
-    float denominator = max(4.0 * NdotV * NdotL, EPSILON);
-    vec3 specular = (NDF * G * F) / denominator;
-
-    return (diffuse + specular) * radiance * NdotL;
-}
-
-// Improved ACES tone mapping with slight contrast adjustment
 vec3 toneMapACES(vec3 x) {
     const float a = 2.51;
     const float b = 0.03;
@@ -146,84 +106,104 @@ vec3 toneMapACES(vec3 x) {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
-// Accurate sRGB gamma correction
 vec3 gammaCorrect(vec3 color) {
     return pow(color, vec3(1.0 / 2.2));
 }
 
-// Enhanced hemisphere ambient lighting
+// ----------------------------------------------------------------------------
+// Hemisphere Ambient (improved balance)
+// ----------------------------------------------------------------------------
 vec3 calculateHemisphereAmbient(vec3 N, vec3 skyColor, vec3 groundColor) {
-    float hemisphere = N.y * 0.5 + 0.5;
-    return mix(groundColor, skyColor, hemisphere * hemisphere); // Smoother transition
+    // Bias upward slightly to reduce dark bottom band
+    float h = N.y * 0.5 + 0.6;
+    h = clamp(h, 0.0, 1.0);
+    h = h * h * (3.0 - 2.0 * h); // smooth interpolation
+    return mix(groundColor, skyColor, h);
 }
 
+// ----------------------------------------------------------------------------
+// Cook-Torrance BRDF (energy-conserving)
+// ----------------------------------------------------------------------------
+vec3 cookTorranceBRDF(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness, vec3 F0) {
+    vec3 H = normalize(V + L);
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float HdotV = max(dot(H, V), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
+
+    float NDF = distributionGGX(N, H, roughness);
+    float G   = geometrySmith(N, V, L, roughness);
+    vec3  F   = fresnelSchlick(HdotV, F0);
+
+    vec3 kS = F;
+    vec3 kD = (1.0 - metallic) * (vec3(1.0) - kS);
+    vec3 diffuse  = kD * albedo * INV_PI;
+    vec3 specular = (NDF * G * F) / max(4.0 * NdotV * NdotL, EPSILON);
+
+    return (diffuse + specular) * radiance * NdotL;
+}
+
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
 void main() {
-    // Early exit for unlit rendering
+    // Unlit fallback
     if (useLighting == 0) {
         FragColor = overrideColor;
         return;
     }
 
-    // Sample base color with improved fallback
+    // Base color
     vec4 baseColor = useTextures ? texture(diffuseSampler, outTexCoord) : material.diffuse;
     if (useTextures && baseColor.a < EPSILON) {
-        baseColor = vec4(1.0, 0.0, 1.0, 1.0); // Magenta fallback for missing textures
+        baseColor = vec4(1.0, 0.0, 1.0, 1.0); // magenta fallback
     }
 
-    vec3 albedo = pow(baseColor.rgb, vec3(2.2)); // Convert to linear space if needed
+    vec3 albedo = pow(baseColor.rgb, vec3(2.2)); // linearize
 
-    // Calculate surface properties
+    // Surface properties
     vec3 N = normalize(Normal);
     vec3 V = normalize(viewPosition - FragPos);
-
-    // Clamp material properties for stability
     float metallic = clamp(material.metallic, 0.0, 1.0);
     float roughness = clamp(material.roughness, 0.04, 1.0);
-
-    // Base reflectance (F0)
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 Lo = vec3(0.0);
 
-    // --- Point Light Contribution ---
-    vec3 lightDir = light.position - FragPos;
-    float lightDistance = length(lightDir);
-    lightDir /= max(lightDistance, EPSILON);
+    // ------------------ Point Light ------------------
+    vec3 L = light.position - FragPos;
+    float dist = length(L);
+    L /= max(dist, EPSILON);
+    float attenuation = calculateAttenuation(dist, light.radius);
+    vec3 radiance = light.diffuse.rgb * light.strength * attenuation;
+    Lo += cookTorranceBRDF(N, V, L, radiance, albedo, metallic, roughness, F0);
 
-    float attenuation = calculateAttenuation(lightDistance, light.radius);
-    vec3 pointRadiance = light.diffuse.rgb * light.strength * attenuation;
-    Lo += cookTorranceBRDF(N, V, lightDir, pointRadiance, albedo, metallic, roughness, F0);
-
-    // --- Directional Light Contribution ---
+    // ---------------- Directional Light ---------------
     vec3 sunDir = normalize(-sun.direction);
     vec3 sunRadiance = sun.diffuse.rgb * sun.strength;
     Lo += cookTorranceBRDF(N, V, sunDir, sunRadiance, albedo, metallic, roughness, F0);
 
-    // --- Enhanced Ambient Lighting ---
+    // ---------------- Ambient Lighting ----------------
     vec3 kS = fresnelSchlick(max(dot(N, V), 0.0), F0);
     vec3 kD = (1.0 - metallic) * (vec3(1.0) - kS);
 
-    // Improved hemisphere ambient with better sky/ground colors
-    vec3 skyColor = sun.ambient.rgb * 1.2;
-    vec3 groundColor = sun.ambient.rgb * 0.3;
+    vec3 skyColor    = sun.ambient.rgb * 1.1;
+    vec3 groundColor = sun.ambient.rgb * 0.55; // increased ground light
     vec3 hemisphereAmbient = calculateHemisphereAmbient(N, skyColor, groundColor);
 
-    // Combine ambient sources
     vec3 materialAmbient = kD * albedo * material.ambient.rgb;
-    vec3 ambient = (materialAmbient + hemisphereAmbient * kD * albedo) * 0.5;
+    vec3 ambient = (materialAmbient + hemisphereAmbient * kD * albedo) * 0.6;
 
-    // Block light contribution (game-specific lighting)
+    // Block light & emission
     ambient += blockLight * albedo * kD;
-
-    // Emissive contribution
     vec3 emissive = emission * albedo;
 
-    // Final color composition
-    vec3 finalColor = ambient + Lo + emissive;
+    // ---------------- Compose Final -------------------
+    vec3 color = ambient + Lo + emissive;
 
-    // Apply tone mapping and gamma correction
-    finalColor = toneMapACES(finalColor);
-    finalColor = gammaCorrect(finalColor);
+    // Tone map + gamma
+    color = toneMapACES(color);
+    color = gammaCorrect(color);
 
-    FragColor = vec4(finalColor, baseColor.a);
+    FragColor = vec4(color, baseColor.a);
 }

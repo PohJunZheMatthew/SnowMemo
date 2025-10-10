@@ -29,7 +29,7 @@ public class Mesh implements Renderable {
     protected Matrix3f normMatrix = new Matrix3f();
     protected Vector3f position = new Vector3f(0,0,0),rotation = new Vector3f(0, (float) (Math.PI/2),0),scale = new Vector3f(1,1f,1);
     // In Mesh class, change the material to:
-
+    protected float[] vertices; // stores current vertex data
     Texture texture;
     static final float[] CUBE_POS = new float[]{
         -0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
@@ -111,6 +111,7 @@ public class Mesh implements Renderable {
     public Mesh(float[] vertexData, int[] indices, Window currentWindow, int stride) {
         win = currentWindow;
         FloatBuffer verticesBuffer = null;
+        this.vertices = vertexData.clone(); // or positions.clone() in other constructors
         try {
             verticesBuffer = MemoryUtil.memAllocFloat(vertexData.length);
             vertexCount = indices.length;
@@ -176,7 +177,8 @@ public class Mesh implements Renderable {
     public Mesh(float[] vertexData, int[] indices, Window currentWindow, Texture texture) {
         this.win = currentWindow;
         this.vertexCount = indices.length;
-        this.texture = texture;
+        this.texture = texture;this.vertices = vertexData.clone(); // or positions.clone() in other constructors
+
 
         FloatBuffer verticesBuffer = null;
 
@@ -236,7 +238,8 @@ public class Mesh implements Renderable {
         }
     }
     public Mesh(float[] positions,int[] indices,Window currentWindow) {
-        win = currentWindow;
+        win = currentWindow;this.vertices = positions.clone(); // or positions.clone() in other constructors
+
         FloatBuffer verticesBuffer = null;
         try {
             verticesBuffer = MemoryUtil.memAllocFloat(positions.length);
@@ -357,7 +360,7 @@ public class Mesh implements Renderable {
         // 1. Render outline
         // ==========================
         if (outline) {
-            Matrix4f outlineMatrix = new Matrix4f(modelMatrix).scale(1.02f);
+            Matrix4f outlineMatrix = new Matrix4f(modelMatrix).scale(1.01f);
             shaderProgram.setUniform("modelMatrix", outlineMatrix);
             shaderProgram.setUniform("useLighting", 0);
             shaderProgram.setUniform("overrideColor", new Vector4f(0, 0, 0, 1));
@@ -499,5 +502,24 @@ public class Mesh implements Renderable {
     }
     boolean collidePosition(Vector3f position){
         return false;
+    }
+    public void updateVertices(float[] newVertices) {
+        this.vertices = newVertices.clone(); // store new data
+
+        FloatBuffer verticesBuffer = null;
+        try {
+            verticesBuffer = MemoryUtil.memAllocFloat(vertices.length);
+            verticesBuffer.put(vertices).flip();
+
+            glBindBuffer(GL_ARRAY_BUFFER, vboId);
+            glBufferData(GL_ARRAY_BUFFER, verticesBuffer, GL_STATIC_DRAW); // upload new data
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        } finally {
+            if (verticesBuffer != null) memFree(verticesBuffer);
+        }
+    }
+
+    public float[] getVertices() {
+        return vertices;
     }
 }
