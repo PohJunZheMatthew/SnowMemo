@@ -15,14 +15,14 @@ public class DirectionalLight extends Light {
 
     public DirectionalLight(Window window, Vector3f direction) {
         this(window, direction,
-                new Vector4f(1f,1f,1f,1f),
-                new Vector4f(1f,1f,1f,1f),
-                new Vector4f(1f,1f,1f,1f),
+                new Vector4f(1f, 1f, 1f, 1f),
+                new Vector4f(1f, 1f, 1f, 1f),
+                new Vector4f(1f, 1f, 1f, 1f),
                 5f);
     }
 
     public DirectionalLight(Window window, Vector3f direction, Vector4f ambient, Vector4f diffuse, Vector4f specular, float strength) {
-        super(window);  // <-- attach to window
+        super(window);
         this.direction = direction;
         this.ambient = ambient;
         this.diffuse = diffuse;
@@ -30,27 +30,31 @@ public class DirectionalLight extends Light {
         this.strength = strength;
     }
 
-
     @Override
     public void addValuesToShaderProgram(int index, @NonNull ShaderProgram shader) {
         try {
             String prefix = "dirLights[" + index + "].";
+
             if (!shader.hasUniform(prefix + "direction")) {
                 shader.createUniform(prefix + "direction");
             }
             shader.setUniform(prefix + "direction", direction);
+
             if (!shader.hasUniform(prefix + "ambient")) {
                 shader.createUniform(prefix + "ambient");
             }
             shader.setUniform(prefix + "ambient", ambient);
+
             if (!shader.hasUniform(prefix + "diffuse")) {
                 shader.createUniform(prefix + "diffuse");
             }
             shader.setUniform(prefix + "diffuse", diffuse);
+
             if (!shader.hasUniform(prefix + "specular")) {
                 shader.createUniform(prefix + "specular");
             }
             shader.setUniform(prefix + "specular", specular);
+
             if (!shader.hasUniform(prefix + "strength")) {
                 shader.createUniform(prefix + "strength");
             }
@@ -58,5 +62,26 @@ public class DirectionalLight extends Light {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    // Getters (no setters since fields are final)
+    public Vector3f getDirection() {
+        return direction;
+    }
+
+    public Vector4f getAmbient() {
+        return ambient;
+    }
+
+    public Vector4f getDiffuse() {
+        return diffuse;
+    }
+
+    public Vector4f getSpecular() {
+        return specular;
+    }
+
+    public float getStrength() {
+        return strength;
     }
 }

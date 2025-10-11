@@ -181,9 +181,20 @@ public class Window {
     public void render(List<Renderable> meshes){
         GLFW.glfwMakeContextCurrent(window);
         GLFW.glfwPollEvents();
-        float aspectRatio = (float) width / height;
-        projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio,
-                Z_NEAR, Z_FAR);
+
+        // Get actual framebuffer size (handles HiDPI displays)
+        IntBuffer fbWidth = MemoryUtil.memAllocInt(1);
+        IntBuffer fbHeight = MemoryUtil.memAllocInt(1);
+        GLFW.glfwGetFramebufferSize(window, fbWidth, fbHeight);
+        int actualWidth = fbWidth.get(0);
+        int actualHeight = fbHeight.get(0);
+        MemoryUtil.memFree(fbWidth);
+        MemoryUtil.memFree(fbHeight);
+        GL11.glViewport(0, 0, actualWidth, actualHeight);
+
+        float aspectRatio = (float) actualWidth / actualHeight;
+        projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio, Z_NEAR, Z_FAR);
+
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         for (Renderable m:meshes) {
             if (m instanceof Mesh) ((Mesh) m).render(SnowMemo.camera); else m.render();

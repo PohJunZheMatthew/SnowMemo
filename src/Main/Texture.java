@@ -16,10 +16,9 @@ import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 public class Texture {
     private final int textureId;
 
-    private Texture(int textureId) {
+    protected Texture(int textureId) {
         this.textureId = textureId;
     }
-
     // --------- Public API ----------
 
     public static Texture loadTexture(InputStream inputStream) {

@@ -259,6 +259,20 @@ public class Mesh implements Renderable {
             }
         }
     }
+
+    public static Matrix4f buildModelViewMatrix(Mesh mesh, Matrix4f lightViewMatrix) {
+        Matrix4f modelMatrix = new Matrix4f();
+        modelMatrix.identity()
+                .translate(mesh.getPosition())
+                .rotateXYZ(mesh.getRotation().x, mesh.getRotation().y, mesh.getRotation().z)
+                .scale(mesh.getScale());
+
+        Matrix4f modelViewMatrix = new Matrix4f(lightViewMatrix);
+        modelViewMatrix.mul(modelMatrix);
+
+        return modelViewMatrix;
+    }
+
     @Override
     public void init() {
         try {
@@ -313,6 +327,12 @@ public class Mesh implements Renderable {
             if (!shaderProgram.hasUniform("emission")) {
                 shaderProgram.createUniform("emission");
             }
+            if (!shaderProgram.hasUniform("shadowMap")) {
+                shaderProgram.createUniform("shadowMap");
+            }
+            if (!shaderProgram.hasUniform("viewMatrix")) {
+                shaderProgram.createUniform("viewMatrix");
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -326,6 +346,7 @@ public class Mesh implements Renderable {
         shaderProgram.bind();
         Light.Light.setLightsToShader(win,shaderProgram);
         shaderProgram.setUniform("projectionMatrix", win.getProjectionMatrix());
+        shaderProgram.setUniform("viewMatrix", camera.getViewMatrix());
 
         Matrix4f modelViewMatrix = new Matrix4f(camera.getViewMatrix()).mul(modelMatrix);
         Matrix3f normalMatrix = new Matrix3f();
@@ -342,8 +363,19 @@ public class Mesh implements Renderable {
         material.setUniformVal(shaderProgram);
 
         glBindVertexArray(vaoId);
+
+        // Bind shadow map to texture unit 1
+        glActiveTexture(GL_TEXTURE1);
+        if (SnowMemo.shadowMap != null) {
+            SnowMemo.shadowMap.getDepthMapTexture().bind();
+            shaderProgram.setUniform("shadowMap", 1);
+        }
+
+        // Bind diffuse texture to texture unit 0
         if (texture != null) {
+            glActiveTexture(GL_TEXTURE0);
             texture.bind();
+            shaderProgram.setUniform("diffuseSampler", 0);
         }
 
         // enable attributes: pos(0), normal(1), uv(2)
@@ -375,18 +407,14 @@ public class Mesh implements Renderable {
         if (texture != null) {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            glActiveTexture(GL_TEXTURE0);
-            texture.bind();
-            shaderProgram.setUniform("diffuseSampler", 0);
             shaderProgram.setUniform("useTextures", true);
         } else {
             shaderProgram.setUniform("useTextures", false);
         }
 
-        shaderProgram.setUniform("overrideColor", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f)); // neutral
+        shaderProgram.setUniform("overrideColor", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         glCullFace(GL_BACK);
         glDrawElements(GL_TRIANGLES, vertexCount, GL_UNSIGNED_INT, 0);
-
 
         // Cleanup
         glDisableVertexAttribArray(0);
@@ -395,6 +423,12 @@ public class Mesh implements Renderable {
 
         glBindVertexArray(0);
         if (texture != null) texture.unbind();
+
+        // Unbind shadow map
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
+
         shaderProgram.unbind();
     }
     public void cleanUp() {

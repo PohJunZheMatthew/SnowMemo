@@ -1,5 +1,6 @@
 package Main;
 
+import com.mongodb.lang.NonNull;
 import org.joml.Vector3f;
 
 import java.io.BufferedReader;
@@ -13,6 +14,18 @@ import java.util.Map;
 
 public class Utils {
     private Utils(){}
+    public static String loadResource(@NonNull InputStream inputStream){
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+            String line;
+            StringBuilder text = new StringBuilder();
+            while ((line = reader.readLine()) != null) {
+                text.append(line).append("\n");
+            }
+            return text.toString();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
     public static String loadResource(String filePath){
         InputStream inputStream = SnowMemo.class.getResourceAsStream(filePath);
         if (inputStream == null) {

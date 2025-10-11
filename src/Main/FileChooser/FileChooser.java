@@ -278,7 +278,12 @@ public class FileChooser extends Window {
             @Override
             public void init() { }
         };
+        cancelFileButton.addCallBack(new MouseClickCallBack() {
+            @Override
+            public void onEvent(MouseClickEvent e) {
 
+            }
+        });
         chooseFileFrame = new GUIComponent(this, 0.05f, 0.875f, 0.9f, 0.1f) {
             @Override
             protected void paintComponent(Graphics g) {
@@ -331,13 +336,6 @@ public class FileChooser extends Window {
             @Override
             public void init() { }
         };
-
-        chooseFileButton.addCallBack(new MouseClickCallBack() {
-            @Override
-            public void onEvent(MouseClickEvent e) {
-                System.out.println("FileChooser button clicked!");
-            }
-        });
     }
 
     public void render() {
@@ -413,7 +411,11 @@ public class FileChooser extends Window {
             previousDirectory = currentDirectory;
         }
     }
+    MouseClickCallBack cancelMouseClickCallback;
     public File chooseFile() {
+        if (cancelMouseClickCallback!=null){
+            cancelFileButton.removeCallBack(cancelMouseClickCallback);
+        }
         fileNameTextField.setText("");
         final File[] returnFile = {null};
         final boolean[] running = {true};
@@ -423,6 +425,14 @@ public class FileChooser extends Window {
                 running[0] = false;
             }
         };
+        cancelMouseClickCallback = new MouseClickCallBack() {
+            @Override
+            public void onEvent(MouseClickEvent e) {
+                running[0] = false;
+                returnFile[0] = new File("");
+            }
+        };
+        cancelFileButton.addCallBack( cancelMouseClickCallback);
         chooseFileButton.addCallBack(mouseClickCallBack);
         Thread.startVirtualThread(()->{while (running[0]){if (mouseWheelVelocity != 0) {
             float zoomSpeed = 0.5f;

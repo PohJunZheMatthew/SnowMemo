@@ -5,6 +5,8 @@
 in vec3 FragPos;
 in vec3 Normal;
 in vec2 outTexCoord;
+in vec4 FragPosLightSpace;
+
 out vec4 FragColor;
 
 uniform vec3 viewPosition;
@@ -16,7 +18,7 @@ struct Material{
     float metallic;
     float roughness;
 };
-// Material
+
 uniform Material material;
 
 // Lighting
@@ -43,6 +45,7 @@ uniform PointLight pointLights[MAX_POINT_LIGHTS];
 uniform DirLight dirLights[MAX_DIR_LIGHTS];
 
 uniform sampler2D diffuseSampler;
+uniform sampler2D shadowMap;
 uniform bool useTextures;
 uniform int useLighting;
 uniform vec4 overrideColor;
@@ -52,6 +55,43 @@ uniform float emission;
 const float PI = 3.14159265359;
 const float EPSILON = 1e-6;
 const float INV_PI = 0.31830988618;
+
+// --- Shadow Calculation ---
+float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+    // Perspective divide
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+
+    // Transform to [0,1] range
+    projCoords = projCoords * 0.5 + 0.5;
+
+    // Outside shadow map bounds = no shadow
+    if(projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 ||
+       projCoords.y < 0.0 || projCoords.y > 1.0) {
+        return 0.0;
+    }
+
+    // Get closest depth value from light's perspective
+    float closestDepth = texture(shadowMap, projCoords.xy).r;
+
+    // Get depth of current fragment from light's perspective
+    float currentDepth = projCoords.z;
+
+    // Bias to prevent shadow acne
+    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
+
+    // PCF (Percentage Closer Filtering) for softer shadows
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    for(int x = -1; x <= 1; ++x) {
+        for(int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+
+    return shadow;
+}
 
 // --- PBR Utilities ---
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
@@ -126,12 +166,19 @@ void main(){
     vec4 baseColor = useTextures ? texture(diffuseSampler,outTexCoord) : material.diffuse;
     vec3 albedo = pow(baseColor.rgb, vec3(2.2));
     float metallic = material.metallic;
-    float roughness = max(material.roughness, 0.04); // Clamp roughness to avoid artifacts
+    float roughness = max(material.roughness, 0.04);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 N = normalize(Normal);
     vec3 V = normalize(viewPosition - FragPos);
     vec3 Lo = vec3(0.0);
+
+    // Calculate shadow for directional lights
+    float shadow = 0.0;
+    if(numDirLights > 0) {
+        vec3 lightDir = normalize(-dirLights[0].direction);
+        shadow = calculateShadow(FragPosLightSpace, N, lightDir);
+    }
 
     // --- Point Lights ---
     for(int i=0;i<numPointLights;i++){
@@ -144,24 +191,27 @@ void main(){
         Lo += cookTorranceBRDF(N,V,L,radiance,albedo,metallic,roughness,F0);
     }
 
-    // --- Directional Lights ---
+    // --- Directional Lights (with shadows) ---
     for(int i=0;i<numDirLights;i++){
         DirLight l = dirLights[i];
         vec3 L = normalize(-l.direction);
         vec3 radiance = l.diffuse.rgb*l.strength;
-        Lo += cookTorranceBRDF(N,V,L,radiance,albedo,metallic,roughness,F0);
+
+        // Apply shadow only to first directional light
+        float shadowFactor = (i == 0) ? (1.0 - shadow * 0.8) : 1.0;
+
+        Lo += cookTorranceBRDF(N,V,L,radiance,albedo,metallic,roughness,F0) * shadowFactor;
     }
 
     // Ambient light - convert to linear space and multiply by albedo
     vec3 ambientLinear = pow(material.ambient.rgb, vec3(2.2));
     vec3 ambient = ambientLinear * albedo;
 
-    // Block light - treat as indirect lighting (already in linear space presumably)
+    // Block light - treat as indirect lighting
     vec3 blockLightContribution = blockLight * albedo;
 
-    // Emission - pure additive light, not multiplied by albedo
-    vec3 emissionContribution = emission * albedo; // If emission should be colored by surface
-    // OR use: vec3 emissionContribution = vec3(emission); // If emission is white light
+    // Emission
+    vec3 emissionContribution = emission * albedo;
 
     // Combine all lighting in linear space
     vec3 color = ambient + Lo + blockLightContribution + emissionContribution;

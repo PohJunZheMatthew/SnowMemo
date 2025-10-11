@@ -7,6 +7,7 @@ import Light.AmbientLight;
 import Light.DirectionalLight;
 import Light.PointLight;
 import Main.FileChooser.FileChooser;
+import Main.Shadow.ShadowMap;
 import Main.Theme.Theme;
 import com.mongodb.*;
 import com.mongodb.client.MongoClient;
@@ -18,7 +19,6 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.glfw.*;
-import org.slf4j.helpers.Slf4jEnvUtil;
 
 import java.awt.*;
 import java.awt.geom.AffineTransform;
@@ -48,6 +48,7 @@ public class SnowMemo {
     static int timeOfDay = 0;
     static GUIComponent backButton;
     static FileChooser fileChooser;
+    public static ShadowMap shadowMap;
     private static final Font quickSandFont;
 
     static {
@@ -56,6 +57,8 @@ public class SnowMemo {
         } catch (FontFormatException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -97,6 +100,11 @@ public class SnowMemo {
                 new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
                 32f
         );
+        try {
+            shadowMap = new ShadowMap();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 //        renderable.add(new Mesh(Mesh.CUBE_POS_UV,Mesh.CUBE_INDICES,window,Texture.loadTexture(this.getClass().getResourceAsStream("2025-03-29T10:45:07.749198.png"))));
         renderable.add(new Baseplate());
         mesh = Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"));
@@ -303,6 +311,22 @@ public class SnowMemo {
         });
         window.show();
         while (!glfwWindowShouldClose(window.window)){
+            List<Mesh> meshes = new ArrayList<Mesh>();
+            for (Renderable renderable1:renderable){
+                if (renderable1 instanceof Mesh){
+                    meshes.add((Mesh) renderable1);
+                }
+            }
+            shadowMap.render(window, meshes, new Vector3f(0, 0, 0));
+            Matrix4f lightSpaceMatrix = shadowMap.getLightSpaceMatrix();
+
+            // Set light space matrix for all meshes before rendering
+            for (Mesh mesh : meshes) {
+                mesh.shaderProgram.bind();
+                mesh.shaderProgram.setUniform("lightSpaceMatrix", lightSpaceMatrix);
+                mesh.shaderProgram.unbind();
+            }
+
             window.render(renderable);
         }
         cleanUp();
