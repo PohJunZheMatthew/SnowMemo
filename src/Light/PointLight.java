@@ -1,103 +1,67 @@
 package Light;
 
 import Main.ShaderProgram;
+import Main.Window;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.joml.Vector4fKt;
 
-public class PointLight {
-    private Vector4f ambient;
-    private Vector4f diffuse;
-    private Vector4f specular;
-    private float strength;
+public class PointLight extends Light {
     private Vector3f position;
-    float radius;
-    public PointLight(Vector4f ambient, Vector4f diffuse, Vector4f specular, Vector3f position, float strength) {
+    private Vector4f ambient, diffuse, specular;
+    private float strength;
+    private float radius;
+
+    public PointLight(Window window, Vector3f position, Vector4f ambient, Vector4f diffuse, Vector4f specular,float strength) {
+        super(window);
+        this.position = position;
         this.ambient = ambient;
         this.diffuse = diffuse;
         this.specular = specular;
-        this.position = position;
         this.strength = strength;
+        this.radius = 100f;
     }
-
-    // Defaults to strength = 1
-    public PointLight(Vector4f ambient, Vector4f diffuse, Vector4f specular, Vector3f position) {
-        this(ambient, diffuse, specular, position, 1f);
-    }
-
-    public PointLight(Vector3f position) {
-        this(new Vector4f(1f, 1f, 1f, 1f),
-                new Vector4f(1f, 1f, 1f, 1f),
-                new Vector4f(1f, 1f, 1f, 1f),
-                position,
-                1f);
-    }
-
-    public void setUniformVal(ShaderProgram shaderProgram) {
-        shaderProgram.createUniformIfAbsent("light.ambient");
-        shaderProgram.createUniformIfAbsent("light.diffuse");
-        shaderProgram.createUniformIfAbsent("light.specular");
-        shaderProgram.createUniformIfAbsent("light.position");
-        shaderProgram.createUniformIfAbsent("light.strength");
-
-        shaderProgram.createUniformIfAbsent("lightConstant");
-        shaderProgram.createUniformIfAbsent("lightLinear");
-        shaderProgram.createUniformIfAbsent("lightQuadratic");
-
-        shaderProgram.setUniform("light.ambient", ambient);
-        shaderProgram.setUniform("light.diffuse", diffuse);
-        shaderProgram.setUniform("light.specular", specular);
-        shaderProgram.setUniform("light.position", position);
-        shaderProgram.setUniform("light.strength", strength);
-
-        shaderProgram.setUniform("lightConstant", 1.0f);
-        shaderProgram.setUniform("lightLinear", 0.09f);
-        shaderProgram.setUniform("lightQuadratic", 0.032f);
-        shaderProgram.createUniformIfAbsent("light.radius");
-        shaderProgram.setUniform("light.radius", radius);
-    }
-
-    public PointLight setAmbient(Vector4f ambient) {
-        this.ambient = ambient;
-        return this;
-    }
-
-    public PointLight setDiffuse(Vector4f diffuse) {
-        this.diffuse = diffuse;
-        return this;
-    }
-
-    public PointLight setSpecular(Vector4f specular) {
-        this.specular = specular;
-        return this;
-    }
-
-    public PointLight setStrength(float strength) {
-        this.strength = strength;
-        return this;
-    }
-
-    public PointLight setPosition(Vector3f position) {
+    public PointLight(Window window,Vector3f position) {
+        super(window);
         this.position = position;
-        return this;
+        this.ambient = new Vector4f(1f,1f,1f,1f);
+        this.diffuse = new Vector4f(1f,1f,1f,1f);
+        this.specular = new Vector4f(1f,1f,1f,1f);
+        this.strength = 1f;
+        this.radius = 10f;
     }
 
-    public Vector4f getAmbient() {
-        return ambient;
-    }
-
-    public Vector4f getDiffuse() {
-        return diffuse;
-    }
-
-    public Vector4f getSpecular() {
-        return specular;
-    }
-
-    public float getStrength() {
-        return strength;
-    }
-
-    public Vector3f getPosition() {
-        return position;
+    @Override
+    public void addValuesToShaderProgram(int index, ShaderProgram shader) {
+        try {
+            String prefix = "pointLights[" + index + "].";
+            if (!shader.hasUniform(prefix + "position")) {
+                    shader.createUniform(prefix + "position");
+            }
+            shader.setUniform(prefix + "position", position);
+            if (!shader.hasUniform(prefix + "ambient")) {
+                shader.createUniform(prefix + "ambient");
+            }
+            shader.setUniform(prefix + "ambient", ambient);
+            if (!shader.hasUniform(prefix + "diffuse")) {
+                shader.createUniform(prefix + "diffuse");
+            }
+            shader.setUniform(prefix + "diffuse", diffuse);
+            if (!shader.hasUniform(prefix + "specular")) {
+                shader.createUniform(prefix + "specular");
+            }
+            shader.setUniform(prefix + "specular", specular);
+            if (!shader.hasUniform(prefix + "strength")) {
+                shader.createUniform(prefix + "strength");
+            }
+            shader.setUniform(prefix + "strength", strength);
+            if (!shader.hasUniform(prefix + "radius")) {
+                shader.createUniform(prefix + "radius");
+            }
+            shader.setUniform(prefix + "radius", radius);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

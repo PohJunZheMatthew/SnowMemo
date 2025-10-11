@@ -9,6 +9,7 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.system.MemoryUtil.memFree;
 
+import jdk.jfr.Name;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -153,16 +154,7 @@ public class Mesh implements Renderable {
             shaderProgram.createVertexShader(Utils.loadResource("Vertex.vs"));
             shaderProgram.createFragmentShader(Utils.loadResource("Fragment.fs"));
             shaderProgram.link();
-            shaderProgram.createUniform("projectionMatrix");
-            shaderProgram.createUniform("modelMatrix");
-            shaderProgram.createUniform("normalMatrix");
-            shaderProgram.createUniform("useLighting");
-            shaderProgram.createUniform("overrideColor");
-            shaderProgram.createUniform("useTextures");
-            shaderProgram.createUniform("light.radius");
-            shaderProgram.createUniform("normalMatrix"); // Use proper normal matrix
-            shaderProgram.createUniform("lightSpaceMatrix");
-
+            init();
             glBindVertexArray(0);
             memFree(indicesBuffer);
         } catch (Exception e) {
@@ -222,14 +214,7 @@ public class Mesh implements Renderable {
             shaderProgram.createVertexShader(Utils.loadResource("Vertex.vs"));
             shaderProgram.createFragmentShader(Utils.loadResource("Fragment.fs"));
             shaderProgram.link();
-            shaderProgram.createUniform("projectionMatrix");
-            shaderProgram.createUniform("modelMatrix");
-            shaderProgram.createUniform("normalMatrix");
-            shaderProgram.createUniform("useLighting");
-            shaderProgram.createUniform("overrideColor");
-            shaderProgram.createUniform("diffuseSampler");
-            shaderProgram.createUniform("useTextures");
-
+            init();
             glBindVertexArray(0);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -264,12 +249,7 @@ public class Mesh implements Renderable {
             shaderProgram.createVertexShader(Utils.loadResource("Vertex.vs"));
             shaderProgram.createFragmentShader(Utils.loadResource("Fragment.fs"));
             shaderProgram.link();
-            shaderProgram.createUniform("projectionMatrix");
-            shaderProgram.createUniform("modelMatrix");
-            shaderProgram.createUniform("normalMatrix");
-            shaderProgram.createUniform("useLighting");
-            shaderProgram.createUniform("overrideColor");
-            shaderProgram.createUniform("useTextures");
+            init();
             memFree(indicesBuffer);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -279,18 +259,36 @@ public class Mesh implements Renderable {
             }
         }
     }
-
-    public void init(){
+    @Override
+    public void init() {
         try {
+            // Matrices
+            shaderProgram.createUniform("projectionMatrix");
+            shaderProgram.createUniform("modelMatrix");
+            shaderProgram.createUniform("normalMatrix");
+            shaderProgram.createUniform("lightSpaceMatrix");
+
+            // Lighting
+            shaderProgram.createUniform("useLighting");
+            shaderProgram.createUniform("blockLight");
+            shaderProgram.createUniform("emission");
+            shaderProgram.createUniform("useTextures");
+            shaderProgram.createUniform("diffuseSampler");
+            shaderProgram.createUniform("overrideColor");
+
+            // Material
+            shaderProgram.createUniform("material.ambient");
+            shaderProgram.createUniform("material.diffuse");
+            shaderProgram.createUniform("material.specular");
+            shaderProgram.createUniform("material.shininess");
             shaderProgram.createUniform("material.metallic");
             shaderProgram.createUniform("material.roughness");
-            shaderProgram.createUniform("light.radius");
-            shaderProgram.createUniform("normalMatrix"); // Use proper normal matrix
-            shaderProgram.createUniform("lightSpaceMatrix");
+
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to initialize shader uniforms", e);
         }
     }
+
     public int getVaoId() {
         return vaoId;
     }
@@ -326,10 +324,7 @@ public class Mesh implements Renderable {
 
         modelMatrix.identity().translate(position).rotateXYZ(rotation).scale(scale);
         shaderProgram.bind();
-
-        SnowMemo.sun.setUniforms(shaderProgram);
-        // SnowMemo.pointLight.setUniformVal(shaderProgram);
-
+        Light.Light.setLightsToShader(win,shaderProgram);
         shaderProgram.setUniform("projectionMatrix", win.getProjectionMatrix());
 
         Matrix4f modelViewMatrix = new Matrix4f(camera.getViewMatrix()).mul(modelMatrix);
@@ -454,48 +449,15 @@ public class Mesh implements Renderable {
         }
 
         public Material(Vector4f ambient, Vector4f diffuse, Vector4f specular, float shininess) {
-            this.ambient = ambient;
-            this.diffuse = diffuse;
-            this.specular = specular;
-            this.shininess = shininess;
+            this(ambient, diffuse, specular, shininess, 0.0f, 0.5f); // default metallic/roughness
         }
 
         public void setUniformVal(ShaderProgram shaderProgram) {
-            if (!shaderProgram.hasUniform("material.ambient")) {
-                try {
-                    shaderProgram.createUniform("material.ambient");
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            if (!shaderProgram.hasUniform("material.diffuse")) {
-                try {
-                    shaderProgram.createUniform("material.diffuse");
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            if (!shaderProgram.hasUniform("material.specular")) {
-                try {
-                    shaderProgram.createUniform("material.specular");
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
-            if (!shaderProgram.hasUniform("material.shininess")) {
-                try {
-                    shaderProgram.createUniform("material.shininess");
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            }
+            // Only set values — do NOT create uniforms
             shaderProgram.setUniform("material.ambient", ambient);
             shaderProgram.setUniform("material.diffuse", diffuse);
             shaderProgram.setUniform("material.specular", specular);
             shaderProgram.setUniform("material.shininess", shininess);
-            shaderProgram.createUniformIfAbsent("material.metallic");
-            shaderProgram.createUniformIfAbsent("material.roughness");
-
             shaderProgram.setUniform("material.metallic", metallic);
             shaderProgram.setUniform("material.roughness", roughness);
         }

@@ -42,20 +42,8 @@ public class SnowMemo {
     float perZoom = 1.0f;
     static final int MAX_ZOOM = 10,MIN_ZOOM = 1;
     @SuppressWarnings("unused")
-    static PointLight pointLight = new PointLight(
-            new Vector4f(0.3f, 0.3f, 0.3f, 1.0f),
-            new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
-            new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
-            new Vector3f(2, 2, 3) // Move light further away
-    );
-    static DirectionalLight sun = new DirectionalLight(
-            "sun",
-            new Vector3f(0f, -1f, -1.0f), // direction
-            new Vector4f(0.3f, 0.3f, 0.4f, 1.0f), // ambient (brighter)
-            new Vector4f(1.0f, 0.95f, 0.8f, 1.0f), // diffuse (warm)
-            new Vector4f(1.0f, 1.0f, 1.0f, 1.0f), // specular
-            2.5f // strength
-    );
+    static PointLight pointLight;
+    static DirectionalLight sun;
     @SuppressWarnings("unused")
     static int timeOfDay = 0;
     static GUIComponent backButton;
@@ -93,6 +81,22 @@ public class SnowMemo {
     public SnowMemo(){
         window = new Window("Snow Memo");
         fileChooser = new FileChooser();
+        sun = new DirectionalLight(
+                window,
+                new Vector3f(0f, -1f, -1.0f), // direction
+                new Vector4f(0.3f, 0.3f, 0.4f, 1.0f), // ambient (brighter)
+                new Vector4f(1.0f, 0.95f, 0.8f, 1.0f), // diffuse (warm)
+                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f), // specular
+                2.5f // strength
+        );
+        pointLight = new PointLight(
+                window,
+                new Vector3f(2, 2, 3),
+                new Vector4f(0.3f, 0.3f, 0.3f, 1.0f),
+                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
+                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
+                32f
+        );
 //        renderable.add(new Mesh(Mesh.CUBE_POS_UV,Mesh.CUBE_INDICES,window,Texture.loadTexture(this.getClass().getResourceAsStream("2025-03-29T10:45:07.749198.png"))));
         renderable.add(new Baseplate());
         mesh = Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"));
@@ -308,7 +312,6 @@ public class SnowMemo {
         renderable.forEach(Renderable::cleanUp);
     }
     public static void main(String[] args) {
-        System.err.println(Slf4jEnvUtil.slf4jVersion());
         System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
         System.setProperty("https.protocols", "TLSv1.2");
         String connectionString = "mongodb+srv://pohjunzhematthew:Inukacom1612@snowmemo.kyxexhg.mongodb.net/?retryWrites=true&w=majority&appName=SnowMemo";
@@ -349,7 +352,7 @@ public class SnowMemo {
             System.out.println("Java OutOfMemoryError: Did you set ");
         }
         catch (Exception e) {
-            System.err.println(e.getMessage());
+            e.printStackTrace();
         }
     }
     public Vector3f getWorldCoordinatesFromScreen(double xpos, double ypos) {
