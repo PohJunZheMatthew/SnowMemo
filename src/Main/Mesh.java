@@ -333,18 +333,25 @@ public class Mesh implements Renderable {
             if (!shaderProgram.hasUniform("viewMatrix")) {
                 shaderProgram.createUniform("viewMatrix");
             }
+            if (!shaderProgram.hasUniform("viewPosition")) {
+                shaderProgram.createUniform("viewPosition");
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+
+        modelMatrix.identity().translate(position).rotateXYZ(rotation).scale(scale);
+        shaderProgram.bind();
+
+        // Set view position for PBR calculations
+        shaderProgram.setUniform("viewPosition", camera.getPosition());
 
         // Lighting uniforms
         shaderProgram.setUniform("blockLight", new Vector3f(0.0f, 0.0f, 0.0f));
         shaderProgram.setUniform("emission", 0.0f);
         shaderProgram.setUniform("useTextures", texture != null);
 
-        modelMatrix.identity().translate(position).rotateXYZ(rotation).scale(scale);
-        shaderProgram.bind();
-        Light.Light.setLightsToShader(win,shaderProgram);
+        Light.Light.setLightsToShader(win, shaderProgram);
         shaderProgram.setUniform("projectionMatrix", win.getProjectionMatrix());
         shaderProgram.setUniform("viewMatrix", camera.getViewMatrix());
 
@@ -369,6 +376,12 @@ public class Mesh implements Renderable {
         if (SnowMemo.shadowMap != null) {
             SnowMemo.shadowMap.getDepthMapTexture().bind();
             shaderProgram.setUniform("shadowMap", 1);
+
+            // Debug once
+            if (Math.random() < 0.001) {
+                System.out.println("Shadow map texture ID: " + SnowMemo.shadowMap.getDepthMapTexture().getTextureid());
+                System.out.println("Bound to texture unit 1");
+            }
         }
 
         // Bind diffuse texture to texture unit 0
@@ -430,6 +443,7 @@ public class Mesh implements Renderable {
         glActiveTexture(GL_TEXTURE0);
 
         shaderProgram.unbind();
+
     }
     public void cleanUp() {
         glDisableVertexAttribArray(0);

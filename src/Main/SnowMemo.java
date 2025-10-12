@@ -28,6 +28,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER;
+import static org.lwjgl.opengl.GL30.glBindFramebuffer;
 
 public class SnowMemo {
     Window window;
@@ -86,11 +89,11 @@ public class SnowMemo {
         fileChooser = new FileChooser();
         sun = new DirectionalLight(
                 window,
-                new Vector3f(0f, -1f, -1.0f), // direction
-                new Vector4f(0.3f, 0.3f, 0.4f, 1.0f), // ambient (brighter)
-                new Vector4f(1.0f, 0.95f, 0.8f, 1.0f), // diffuse (warm)
-                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f), // specular
-                2.5f // strength
+                new Vector3f(1f, -1f, 0.5f).normalize(), // Angled from the side
+                new Vector4f(0.3f, 0.3f, 0.4f, 1.0f),
+                new Vector4f(1.0f, 0.95f, 0.8f, 1.0f),
+                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
+                2.5f
         );
         pointLight = new PointLight(
                 window,
@@ -102,6 +105,8 @@ public class SnowMemo {
         );
         try {
             shadowMap = new ShadowMap();
+            shadowMap.setOrthoBounds(new ShadowMap.OrthoBounds(10f, 0.1f, 50f));
+            shadowMap.setShadowDistance(20f);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -311,20 +316,49 @@ public class SnowMemo {
         });
         window.show();
         while (!glfwWindowShouldClose(window.window)){
-            List<Mesh> meshes = new ArrayList<Mesh>();
-            for (Renderable renderable1:renderable){
+            List<Mesh> meshes = new ArrayList<>();
+            for (Renderable renderable1 : renderable){
                 if (renderable1 instanceof Mesh){
                     meshes.add((Mesh) renderable1);
                 }
             }
-            shadowMap.render(window, meshes, new Vector3f(0, 0, 0));
+
+            // Adjust shadow bounds to capture your scene properly
+            // Your objects span from y=-5 to y=0, x=0 to x=4
+            shadowMap.setOrthoBounds(new ShadowMap.OrthoBounds(10f, 0.1f, 30f));
+            shadowMap.setShadowDistance(15f);
+
+            // Scene center should be in middle of your objects
+            Vector3f sceneCenter = new Vector3f(2, -2.5f, 0); // Middle between baseplate and cubes
+
+            boolean debug = Math.random() < 0.016;
+
+            if (debug) {
+                System.out.println("=== SHADOW DEBUG ===");
+                System.out.println("Scene center: " + sceneCenter);
+                System.out.println("Rendering " + meshes.size() + " meshes to shadow map");
+                System.out.println("Light direction: " + sun.getDirection());
+            }
+
+            shadowMap.render(window, meshes, sceneCenter);
+            if (shadowDebugDone) {
+                testShadowMapVisibility();
+                shadowDebugDone = true;
+            }
             Matrix4f lightSpaceMatrix = shadowMap.getLightSpaceMatrix();
 
             // Set light space matrix for all meshes before rendering
             for (Mesh mesh : meshes) {
-                mesh.shaderProgram.bind();
-                mesh.shaderProgram.setUniform("lightSpaceMatrix", lightSpaceMatrix);
-                mesh.shaderProgram.unbind();
+                try {
+                    mesh.shaderProgram.bind();
+                    if (!mesh.shaderProgram.hasUniform("lightSpaceMatrix")) {
+                        mesh.shaderProgram.createUniform("lightSpaceMatrix");
+                    }
+                    mesh.shaderProgram.setUniform("lightSpaceMatrix", lightSpaceMatrix);
+                    mesh.shaderProgram.unbind();
+                } catch (Exception e) {
+                    System.err.println("Error setting light space matrix: " + e.getMessage());
+                }
             }
 
             window.render(renderable);
@@ -334,6 +368,46 @@ public class SnowMemo {
     }
     public void cleanUp(){
         renderable.forEach(Renderable::cleanUp);
+    }
+    static boolean shadowDebugDone = true;
+
+    public void testShadowMapVisibility() {
+        System.out.println("=== SHADOW MAP TEST ===");
+
+        // Bind the depth texture
+        glBindFramebuffer(GL_FRAMEBUFFER, shadowMap.getDepthMapFBO());
+
+        // Read center pixel
+        float[] centerDepth = new float[1];
+        glReadPixels(ShadowMap.SHADOW_MAP_WIDTH/2, ShadowMap.SHADOW_MAP_HEIGHT/2,
+                1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, centerDepth);
+        System.out.println("Center depth: " + centerDepth[0]);
+
+        // Read sample of depths
+        float[] depths = new float[25];
+        glReadPixels(ShadowMap.SHADOW_MAP_WIDTH/2 - 2, ShadowMap.SHADOW_MAP_HEIGHT/2 - 2,
+                5, 5, GL_DEPTH_COMPONENT, GL_FLOAT, depths);
+
+        float minDepth = 1.0f, maxDepth = 0.0f;
+        int nonOneCount = 0;
+        for (float d : depths) {
+            minDepth = Math.min(minDepth, d);
+            maxDepth = Math.max(maxDepth, d);
+            if (d < 0.999f) nonOneCount++;
+        }
+
+        System.out.println("Min depth: " + minDepth);
+        System.out.println("Max depth: " + maxDepth);
+        System.out.println("Non-1.0 pixels: " + nonOneCount + "/25");
+
+        if (nonOneCount == 0) {
+            System.out.println("WARNING: Shadow map appears empty (all depths = 1.0)");
+            System.out.println("This means objects are not being rendered to shadow map");
+        } else {
+            System.out.println("SUCCESS: Shadow map contains geometry!");
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     public static void main(String[] args) {
         System.setProperty("jdk.tls.client.protocols", "TLSv1.2");

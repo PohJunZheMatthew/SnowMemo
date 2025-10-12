@@ -34,6 +34,7 @@ public class ShaderProgram {
 
     public void createFragmentShader(String shaderCode) throws Exception {
         fragmentShaderId = createShader(shaderCode, GL_FRAGMENT_SHADER);
+
     }
 
     protected int createShader(String shaderCode, int shaderType) throws Exception {
