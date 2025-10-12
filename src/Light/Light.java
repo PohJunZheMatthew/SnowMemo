@@ -1,5 +1,7 @@
 package Light;
 
+import GUI.BillBoardGUI.BillboardGUI;
+import Main.FileChooser.FileChooser;
 import Main.ShaderProgram;
 import Main.Window;
 import com.mongodb.lang.NonNull;
@@ -22,10 +24,10 @@ public abstract class Light {
     public abstract void addValuesToShaderProgram(int index, ShaderProgram shader);
 
     public static void setLightsToShader(Window window, ShaderProgram shader) {
+        if (!lights.containsKey(window)) return;
         Collection<Light> lightCollection = lights.get(window).values();
         int pointIndex = 0;
         int dirIndex = 0;
-
         for (Light l : lightCollection) {
             if (l instanceof PointLight) {
                 l.addValuesToShaderProgram(pointIndex++, shader);

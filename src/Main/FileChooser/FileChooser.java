@@ -1,6 +1,7 @@
 package Main.FileChooser;
 
 import GUI.*;
+import GUI.BillBoardGUI.BillboardGUI;
 import GUI.Events.*;
 import GUI.Label;
 import GUI.TextField;
@@ -20,6 +21,7 @@ import java.nio.IntBuffer;
 import java.util.*;
 import java.util.List;
 
+import static java.lang.Thread.*;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 
@@ -102,7 +104,6 @@ public class FileChooser extends Window {
             public void invoke(long windowHandle, int count, long names) {
                 if (count > 0) {
                     String path = GLFWDropCallback.getName(names, 0);
-                    System.out.println("File dropped: " + path);
                 }
             }
         });
@@ -391,14 +392,12 @@ public class FileChooser extends Window {
                 fileChooserIcon.mesh
                         .setPosition(new Vector3f(x, y, z))
                         .setScale(new Vector3f(0.5f, 0.5f, 0.5f)).setRotation(new Vector3f((float) 0, (float) Math.PI/2, (float) Math.PI));
-//                System.out.printf("(%.6f,%.6f,%.6f)%n", x, y, z);
                 fileChooserIcons.add(fileChooserIcon);
                 rows++;
             }
             MAX_ZOOM = (int) ((rows*0.5f)-2.5f);
             float lowerOffset = MAX_ZOOM / 3f+0.25f;
             float[] verts = originalBackgroundCubeVerts.clone();
-            System.out.println(Arrays.toString(backgroundCube.getVertices()));
             for (int i = 0; i < verts.length; i += 6) {
                 float y = verts[i + 1];
                 if (y <= 0.0f) {
@@ -407,12 +406,11 @@ public class FileChooser extends Window {
             }
             backgroundCube.updateVertices(verts);
             backgroundCube.setPosition(new Vector3f(1.25f, -.5f, 0f));
-            System.out.println(Arrays.toString(backgroundCube.getVertices()));
             previousDirectory = currentDirectory;
         }
     }
     MouseClickCallBack cancelMouseClickCallback;
-    public File chooseFile() {
+    public File chooseFile(){
         if (cancelMouseClickCallback!=null){
             cancelFileButton.removeCallBack(cancelMouseClickCallback);
         }
@@ -429,12 +427,12 @@ public class FileChooser extends Window {
             @Override
             public void onEvent(MouseClickEvent e) {
                 running[0] = false;
-                returnFile[0] = new File("");
+                returnFile[0] = null;
             }
         };
         cancelFileButton.addCallBack( cancelMouseClickCallback);
         chooseFileButton.addCallBack(mouseClickCallBack);
-        Thread.startVirtualThread(()->{while (running[0]){if (mouseWheelVelocity != 0) {
+        startVirtualThread(()->{while (running[0]){if (mouseWheelVelocity != 0) {
             float zoomSpeed = 0.5f;
             float desiredZoom = zoom + mouseWheelVelocity * zoomSpeed;
             desiredZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, desiredZoom));
@@ -446,19 +444,16 @@ public class FileChooser extends Window {
                     camera.move(new Vector3f(0, -delta, 0));
                 }
                 zoom = desiredZoom;
-                System.out.println("zoom = " + zoom);
                 perZoom = (zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
-                System.out.println(perZoom);
             }
             mouseWheelVelocity = 0;
         };
             try {
-                Thread.sleep(1000/60);
+                sleep(1000/60);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
         }});
-        update();
         render();
         glfwShowWindow(window);
         while (running[0]){
@@ -466,6 +461,11 @@ public class FileChooser extends Window {
             render();
             if (GLFW.glfwWindowShouldClose(window)){
                 break;
+            }
+            try {
+                sleep(0);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
         }
         GLFW.glfwHideWindow(window);
@@ -493,15 +493,41 @@ public class FileChooser extends Window {
     private static class FileIcon extends FileChooserIcon {
         final Mesh mesh;
         final File file;
-        final BillboardGUIComponent billboardGUIComponent;
-        public FileIcon(File file){
+        final BillboardGUI billboardGUI;
+        final GUIComponent guiComponent;
+        public FileIcon(File file) {
             this.mesh = Utils.loadObj(this.getClass().getResourceAsStream("File.obj"));
             this.file = file;
-            billboardGUIComponent = new BillboardGUIComponent(currentFileChooser,new Vector3f(1,1,1),new Vector2f(1,1)) {
+
+            this.guiComponent = new GUIComponent(currentFileChooser,0.25f,0.25f) {
                 @Override
                 protected void paintComponent(Graphics g) {
-                    g.setColor(Color.BLACK);
-                    g.fillRect(0,0,widthPx,heightPx);
+                    Graphics2D graphics2D = (Graphics2D) g;
+                    Font basefont = SnowMemo.currentTheme.getFonts()[0].deriveFont(128f);
+
+                    // Auto-scale text to fit
+                    String text = file.getName();
+                    float fontSize = basefont.getSize2D();
+                    Font scaledFont = basefont.deriveFont(fontSize);
+                    FontMetrics fm = graphics2D.getFontMetrics(scaledFont);
+
+                    // Scale down if text is too wide OR too tall
+                    while ((fm.stringWidth(text) > widthPx || fm.getHeight() > heightPx) && fontSize > 1) {
+                        fontSize -= 0.5f;
+                        scaledFont = basefont.deriveFont(fontSize);
+                        fm = graphics2D.getFontMetrics(scaledFont);
+                    }
+
+                    graphics2D.setFont(scaledFont);
+
+                    // Set text color (this was missing!)
+                    graphics2D.setColor(Color.BLACK); // or SnowMemo.currentTheme.getFontColors()[0]
+
+                    // Center the text
+                    int x = (widthPx - fm.stringWidth(text)) / 2;
+                    int y = ((heightPx - fm.getHeight()) / 2) + fm.getAscent();
+
+                    graphics2D.drawString(text, x, y);
                 }
 
                 @Override
@@ -509,10 +535,14 @@ public class FileChooser extends Window {
 
                 }
             };
+            billboardGUI = new BillboardGUI(currentFileChooser, guiComponent);
         }
         public void render(){
             mesh.render(currentFileChooser.camera);
-            billboardGUIComponent.render3D(currentFileChooser.camera.getViewMatrix(),currentFileChooser.projectionMatrix);
+            billboardGUI.setPosition(new Vector3f(mesh.getPosition().x,mesh.getPosition().y-0.625f,mesh.getPosition().z));
+            billboardGUI.setRotation(new Vector3f(0,(float) Math.PI, (float) Math.PI));
+            billboardGUI.setScale(new Vector3f(0.75f,0.375f,0.5f));
+            billboardGUI.render(currentFileChooser.camera);
         }
     }
 }

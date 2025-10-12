@@ -37,7 +37,7 @@ public class SnowMemo {
     Thread updateThread;
     List<Renderable> renderable = new ArrayList<>();
     float mouseWheelVelocity = 0;
-    static Camera camera = new Camera();
+    public static Camera camera = new Camera();
     double preposx,preposy = 0.0;
     @SuppressWarnings("unused")
     static AmbientLight ambientLight = new AmbientLight(0.7f,0.7f,0.7f,1.0f);
@@ -265,9 +265,7 @@ public class SnowMemo {
                     camera.move(new Vector3f(0, delta, 0));
                 }
                 zoom = desiredZoom;
-                System.out.println("zoom = " + zoom);
                 perZoom = (zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
-                System.out.println(perZoom);
             }
             mouseWheelVelocity = 0;
         }
@@ -334,10 +332,10 @@ public class SnowMemo {
             boolean debug = Math.random() < 0.016;
 
             if (debug) {
-                System.out.println("=== SHADOW DEBUG ===");
-                System.out.println("Scene center: " + sceneCenter);
-                System.out.println("Rendering " + meshes.size() + " meshes to shadow map");
-                System.out.println("Light direction: " + sun.getDirection());
+//                System.out.println("=== SHADOW DEBUG ===");
+//                System.out.println("Scene center: " + sceneCenter);
+//                System.out.println("Rendering " + meshes.size() + " meshes to shadow map");
+//                System.out.println("Light direction: " + sun.getDirection());
             }
 
             shadowMap.render(window, meshes, sceneCenter);
@@ -372,7 +370,7 @@ public class SnowMemo {
     static boolean shadowDebugDone = true;
 
     public void testShadowMapVisibility() {
-        System.out.println("=== SHADOW MAP TEST ===");
+//        System.out.println("=== SHADOW MAP TEST ===");
 
         // Bind the depth texture
         glBindFramebuffer(GL_FRAMEBUFFER, shadowMap.getDepthMapFBO());
@@ -381,7 +379,7 @@ public class SnowMemo {
         float[] centerDepth = new float[1];
         glReadPixels(ShadowMap.SHADOW_MAP_WIDTH/2, ShadowMap.SHADOW_MAP_HEIGHT/2,
                 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, centerDepth);
-        System.out.println("Center depth: " + centerDepth[0]);
+//        System.out.println("Center depth: " + centerDepth[0]);
 
         // Read sample of depths
         float[] depths = new float[25];
@@ -396,16 +394,16 @@ public class SnowMemo {
             if (d < 0.999f) nonOneCount++;
         }
 
-        System.out.println("Min depth: " + minDepth);
-        System.out.println("Max depth: " + maxDepth);
-        System.out.println("Non-1.0 pixels: " + nonOneCount + "/25");
-
-        if (nonOneCount == 0) {
-            System.out.println("WARNING: Shadow map appears empty (all depths = 1.0)");
-            System.out.println("This means objects are not being rendered to shadow map");
-        } else {
-            System.out.println("SUCCESS: Shadow map contains geometry!");
-        }
+//        System.out.println("Min depth: " + minDepth);
+//        System.out.println("Max depth: " + maxDepth);
+//        System.out.println("Non-1.0 pixels: " + nonOneCount + "/25");
+//
+//        if (nonOneCount == 0) {
+//            System.out.println("WARNING: Shadow map appears empty (all depths = 1.0)");
+//            System.out.println("This means objects are not being rendered to shadow map");
+//        } else {
+//            System.out.println("SUCCESS: Shadow map contains geometry!");
+//        }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }

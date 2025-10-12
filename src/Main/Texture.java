@@ -39,6 +39,8 @@ public class Texture {
 
     public void bind() {
         glBindTexture(GL_TEXTURE_2D, textureId);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
     public void unbind() {

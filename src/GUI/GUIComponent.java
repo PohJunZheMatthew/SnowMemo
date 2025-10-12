@@ -170,7 +170,6 @@ public abstract class GUIComponent implements Renderable {
                             final MouseExitEvent mouseExitEvent = new MouseExitEvent(g, (int) xpos, (int) ypos);
                             if (g.hitBox.contains(xpos * 2, ypos * 2) && !g.mouseInside) {
                                 g.mouseInside = true;
-                                System.out.println("Mouse Entered into: " + g.hashCode());
                                 g.callBacks.forEach(callBack -> {
                                     if (callBack instanceof MouseEnterCallBack) {
                                         ((MouseEnterCallBack) callBack).onEvent(mouseEnterEvent);
@@ -258,6 +257,17 @@ public abstract class GUIComponent implements Renderable {
     }
 
     public void updateHitBox() {
+        if (parent != null) {
+            widthPx  = (int) (parent.getWidthPx() * width);
+            heightPx = (int) (parent.getHeightPx() * height);
+            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
+            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
+        } else {
+            widthPx  = (int) (windowParent.getWidth() * width);
+            heightPx = (int) (windowParent.getHeight() * height);
+            xPx = (int) (windowParent.getWidth() * x);
+            yPx = (int) (windowParent.getHeight() * y);
+        }
         if (hitBox instanceof Rectangle) ((Rectangle)hitBox).setBounds(xPx,yPx,widthPx,heightPx);
     }
 
@@ -282,17 +292,6 @@ public abstract class GUIComponent implements Renderable {
     public void render() {
         if (!visible) return;
 
-        if (parent != null) {
-            widthPx  = (int) (parent.getWidthPx() * width);
-            heightPx = (int) (parent.getHeightPx() * height);
-            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
-            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
-        } else {
-            widthPx  = (int) (windowParent.getWidth() * width);
-            heightPx = (int) (windowParent.getHeight() * height);
-            xPx = (int) (windowParent.getWidth() * x);
-            yPx = (int) (windowParent.getHeight() * y);
-        }
         updateHitBox();
 
         boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
@@ -619,5 +618,14 @@ public abstract class GUIComponent implements Renderable {
     }
     public static Point2D getMousePos(Window w) {
         return mpos.get(w);
+    }
+    public void print(Graphics g){
+        paintComponent(g);
+    }
+    public BufferedImage print(){
+        updateHitBox();
+        BufferedImage bufferedImage = new BufferedImage(widthPx,heightPx,BufferedImage.TYPE_INT_ARGB);
+        paintComponent(bufferedImage.createGraphics());
+        return bufferedImage;
     }
 }

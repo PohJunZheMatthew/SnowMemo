@@ -31,7 +31,7 @@ public class Mesh implements Renderable {
     protected Vector3f position = new Vector3f(0,0,0),rotation = new Vector3f(0, (float) (Math.PI/2),0),scale = new Vector3f(1,1f,1);
     // In Mesh class, change the material to:
     protected float[] vertices; // stores current vertex data
-    Texture texture;
+    protected Texture texture;
     static final float[] CUBE_POS = new float[]{
         -0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
         0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
