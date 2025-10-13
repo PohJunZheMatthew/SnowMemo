@@ -15,10 +15,13 @@ import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 
 public class Texture {
     private final int textureId;
+    private final boolean hasAlpha;
 
-    protected Texture(int textureId) {
+    protected Texture(int textureId, boolean hasAlpha) {
         this.textureId = textureId;
+        this.hasAlpha = hasAlpha;
     }
+
     // --------- Public API ----------
 
     public static Texture loadTexture(InputStream inputStream) {
@@ -39,8 +42,6 @@ public class Texture {
 
     public void bind() {
         glBindTexture(GL_TEXTURE_2D, textureId);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
 
     public void unbind() {
@@ -55,6 +56,10 @@ public class Texture {
         return textureId;
     }
 
+    public boolean hasAlpha() {
+        return hasAlpha;
+    }
+
     // --------- Internal Helpers ----------
 
     private static Texture createTexture(BufferedImage image,
@@ -64,6 +69,9 @@ public class Texture {
                                          int wrapS,
                                          int wrapT,
                                          float lodBias) {
+
+        // Check if image has alpha channel
+        boolean hasAlpha = image.getColorModel().hasAlpha();
 
         byte[] imgRGBA = getRGBA(image, flipY);
         ByteBuffer buffer = BufferUtils.createByteBuffer(imgRGBA.length);
@@ -83,14 +91,14 @@ public class Texture {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-// Wrapping
+        // Wrapping
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-// Stronger bias for sharper mipmaps
+        // Stronger bias for sharper mipmaps
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -1.0f);
 
-// Anisotropic filtering (force maximum quality)
+        // Anisotropic filtering (force maximum quality)
         if (GL.getCapabilities().GL_EXT_texture_filter_anisotropic) {
             float maxAniso = glGetFloat(EXTTextureFilterAnisotropic.GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT);
             glTexParameterf(GL_TEXTURE_2D,
@@ -109,9 +117,9 @@ public class Texture {
         // Unbind for safety
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        return new Texture(texId);
+        return new Texture(texId, hasAlpha);
     }
-    
+
     private static byte[] getRGBA(BufferedImage image, boolean flipY) {
         int width = image.getWidth();
         int height = image.getHeight();
@@ -122,8 +130,8 @@ public class Texture {
         for (int y = 0; y < height; y++) {
             int row = flipY ? (height - 1 - y) : y;
             for (int x = 0; x < width; x++) {
-                int pixel = pixels[y * width + x];
-                int i = (row * width + x) * 4;
+                int pixel = pixels[row * width + x];
+                int i = (y * width + x) * 4;
                 data[i]     = (byte) ((pixel >> 16) & 0xFF); // R
                 data[i + 1] = (byte) ((pixel >> 8) & 0xFF);  // G
                 data[i + 2] = (byte) (pixel & 0xFF);         // B

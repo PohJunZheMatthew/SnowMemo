@@ -33,30 +33,30 @@ public class Mesh implements Renderable {
     protected float[] vertices; // stores current vertex data
     protected Texture texture;
     static final float[] CUBE_POS = new float[]{
-        -0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
-        0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
-        0.5f,  0.5f,  0.5f,   0f,  0f,  1f,
-        -0.5f,  0.5f,  0.5f,   0f,  0f,  1f,
-        -0.5f, -0.5f, -0.5f,   0f,  0f, -1f,
-        0.5f, -0.5f, -0.5f,   0f,  0f, -1f,
-        0.5f,  0.5f, -0.5f,   0f,  0f, -1f,
-        -0.5f,  0.5f, -0.5f,   0f,  0f, -1f,
-        -0.5f, -0.5f, -0.5f,  -1f,  0f,  0f,
-        -0.5f, -0.5f,  0.5f,  -1f,  0f,  0f,
-        -0.5f,  0.5f,  0.5f,  -1f,  0f,  0f,
-        -0.5f,  0.5f, -0.5f,  -1f,  0f,  0f,
-        0.5f, -0.5f, -0.5f,   1f,  0f,  0f,
-        0.5f, -0.5f,  0.5f,   1f,  0f,  0f,
-        0.5f,  0.5f,  0.5f,   1f,  0f,  0f,
-        0.5f,  0.5f, -0.5f,   1f,  0f,  0f,
-        -0.5f,  0.5f, -0.5f,   0f,  1f,  0f,
-        0.5f,  0.5f, -0.5f,   0f,  1f,  0f,
-        0.5f,  0.5f,  0.5f,   0f,  1f,  0f,
-        -0.5f,  0.5f,  0.5f,   0f,  1f,  0f,
-        -0.5f, -0.5f, -0.5f,   0f, -1f,  0f,
-        0.5f, -0.5f, -0.5f,   0f, -1f,  0f,
-        0.5f, -0.5f,  0.5f,   0f, -1f,  0f,
-        -0.5f, -0.5f,  0.5f,   0f, -1f,  0f,
+            -0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
+            0.5f, -0.5f,  0.5f,   0f,  0f,  1f,
+            0.5f,  0.5f,  0.5f,   0f,  0f,  1f,
+            -0.5f,  0.5f,  0.5f,   0f,  0f,  1f,
+            -0.5f, -0.5f, -0.5f,   0f,  0f, -1f,
+            0.5f, -0.5f, -0.5f,   0f,  0f, -1f,
+            0.5f,  0.5f, -0.5f,   0f,  0f, -1f,
+            -0.5f,  0.5f, -0.5f,   0f,  0f, -1f,
+            -0.5f, -0.5f, -0.5f,  -1f,  0f,  0f,
+            -0.5f, -0.5f,  0.5f,  -1f,  0f,  0f,
+            -0.5f,  0.5f,  0.5f,  -1f,  0f,  0f,
+            -0.5f,  0.5f, -0.5f,  -1f,  0f,  0f,
+            0.5f, -0.5f, -0.5f,   1f,  0f,  0f,
+            0.5f, -0.5f,  0.5f,   1f,  0f,  0f,
+            0.5f,  0.5f,  0.5f,   1f,  0f,  0f,
+            0.5f,  0.5f, -0.5f,   1f,  0f,  0f,
+            -0.5f,  0.5f, -0.5f,   0f,  1f,  0f,
+            0.5f,  0.5f, -0.5f,   0f,  1f,  0f,
+            0.5f,  0.5f,  0.5f,   0f,  1f,  0f,
+            -0.5f,  0.5f,  0.5f,   0f,  1f,  0f,
+            -0.5f, -0.5f, -0.5f,   0f, -1f,  0f,
+            0.5f, -0.5f, -0.5f,   0f, -1f,  0f,
+            0.5f, -0.5f,  0.5f,   0f, -1f,  0f,
+            -0.5f, -0.5f,  0.5f,   0f, -1f,  0f,
     };
     static final float[] CUBE_POS_UV = new float[]{
             // Front face - position(3) + normal(3) + UV(2)
@@ -96,12 +96,12 @@ public class Mesh implements Renderable {
             -0.5f, -0.5f,  0.5f,   0f, -1f,  0f,   0.0f, 1.0f
     };
     static final int[] CUBE_INDICES = new int[]{
-        0, 1, 2,   2, 3, 0,
-        4, 6, 5,   6, 4, 7,
-        8, 9, 10,  10, 11, 8,
-        12, 14, 13, 14, 12, 15,
-        16, 17, 18, 18, 19, 16,
-        20, 22, 21, 22, 20, 23
+            0, 1, 2,   2, 3, 0,
+            4, 6, 5,   6, 4, 7,
+            8, 9, 10,  10, 11, 8,
+            12, 14, 13, 14, 12, 15,
+            16, 17, 18, 18, 19, 16,
+            20, 22, 21, 22, 20, 23
     };
     protected Material material = new Material(
             new Vector4f(1f, 1f, 1f, 1.0f),      // Brighter ambient
@@ -313,6 +313,8 @@ public class Mesh implements Renderable {
     public void render() {
         render(SnowMemo.camera);
     }
+    // In the render() method, replace the transparency handling section with this:
+
     public void render(Camera camera){
         GL11.glLineWidth(1);
 
@@ -376,12 +378,6 @@ public class Mesh implements Renderable {
         if (SnowMemo.shadowMap != null) {
             SnowMemo.shadowMap.getDepthMapTexture().bind();
             shaderProgram.setUniform("shadowMap", 1);
-
-            // Debug once
-            if (Math.random() < 0.001) {
-                System.out.println("Shadow map texture ID: " + SnowMemo.shadowMap.getDepthMapTexture().getTextureid());
-                System.out.println("Bound to texture unit 1");
-            }
         }
 
         // Bind diffuse texture to texture unit 0
@@ -391,45 +387,62 @@ public class Mesh implements Renderable {
             shaderProgram.setUniform("diffuseSampler", 0);
         }
 
-        // enable attributes: pos(0), normal(1), uv(2)
+        // Enable vertex attributes
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
 
         // ==========================
-        // 1. Render outline
+        // Handle transparency if texture has alpha
         // ==========================
-        if (outline) {
+        boolean hasTransparency = (texture != null && texture.hasAlpha());
+
+        if (hasTransparency) {
+            // Enable blending for transparency
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            // Keep depth testing but disable depth writing for transparent objects
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(false);
+            // Disable backface culling for transparency (optional - depends on your needs)
+            GL11.glDisable(GL11.GL_CULL_FACE);
+        } else {
+            // Opaque rendering
+            GL11.glDisable(GL11.GL_BLEND);
+            GL11.glEnable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(true);
+            GL11.glEnable(GL11.GL_CULL_FACE);
+        }
+
+        // ==========================
+        // 1. Render outline (only for opaque objects)
+        // ==========================
+        if (outline && !hasTransparency) {
             Matrix4f outlineMatrix = new Matrix4f(modelMatrix).scale(1.01f);
             shaderProgram.setUniform("modelMatrix", outlineMatrix);
             shaderProgram.setUniform("useLighting", 0);
             shaderProgram.setUniform("overrideColor", new Vector4f(0, 0, 0, 1));
 
             glCullFace(GL_FRONT);
-            glDepthMask(false);
             glDrawElements(GL_TRIANGLES, vertexCount, GL_UNSIGNED_INT, 0);
-            glDepthMask(true);
         }
+
         // ==========================
-        // 2. Render cube normally
+        // 2. Render mesh normally
         // ==========================
         shaderProgram.setUniform("modelMatrix", modelMatrix);
         shaderProgram.setUniform("useLighting", 1);
+        shaderProgram.setUniform("overrideColor", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
 
-        // Bind texture if available
-        if (texture != null) {
-            GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            shaderProgram.setUniform("useTextures", true);
-        } else {
-            shaderProgram.setUniform("useTextures", false);
+        if (!hasTransparency) {
+            glCullFace(GL_BACK);
         }
 
-        shaderProgram.setUniform("overrideColor", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
-        glCullFace(GL_BACK);
         glDrawElements(GL_TRIANGLES, vertexCount, GL_UNSIGNED_INT, 0);
 
+        // ==========================
         // Cleanup
+        // ==========================
         glDisableVertexAttribArray(0);
         glDisableVertexAttribArray(1);
         glDisableVertexAttribArray(2);
@@ -442,8 +455,14 @@ public class Mesh implements Renderable {
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
 
-        shaderProgram.unbind();
+        // Restore default GL state
+        if (hasTransparency) {
+            GL11.glDepthMask(true);
+            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glDisable(GL11.GL_BLEND);
+        }
 
+        shaderProgram.unbind();
     }
     public void cleanUp() {
         glDisableVertexAttribArray(0);

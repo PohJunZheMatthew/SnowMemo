@@ -10,7 +10,8 @@ in vec4 FragPosLightSpace;
 out vec4 FragColor;
 
 uniform vec3 viewPosition;
-struct Material{
+
+struct Material {
     vec4 ambient;
     vec4 diffuse;
     vec4 specular;
@@ -18,10 +19,8 @@ struct Material{
     float metallic;
     float roughness;
 };
-
 uniform Material material;
 
-// Lighting
 struct PointLight {
     vec4 ambient;
     vec4 diffuse;
@@ -30,7 +29,6 @@ struct PointLight {
     float strength;
     float radius;
 };
-
 struct DirLight {
     vec4 ambient;
     vec4 diffuse;
@@ -56,168 +54,123 @@ const float PI = 3.14159265359;
 const float EPSILON = 1e-6;
 const float INV_PI = 0.31830988618;
 
-// --- Shadow Calculation ---
-float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
-    // Perspective divide
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+// --- Utilities ---
+vec3 srgbToLinear(vec3 c) { return pow(c, vec3(2.2)); }
+vec3 linearToSrgb(vec3 c) { return pow(c, vec3(1.0 / 2.2)); }
 
-    // Transform to [0,1] range
+// --- Shadow ---
+float calculateShadow(vec4 fragPosLightSpace, vec3 N, vec3 L) {
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
 
-    // Outside shadow map bounds = no shadow
-    if(projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 ||
-       projCoords.y < 0.0 || projCoords.y > 1.0) {
+    if (projCoords.z > 1.0 || any(lessThan(projCoords.xy, vec2(0.0))) || any(greaterThan(projCoords.xy, vec2(1.0))))
         return 0.0;
-    }
 
-    // Get closest depth value from light's perspective
-    float closestDepth = texture(shadowMap, projCoords.xy).r;
-
-    // Get depth of current fragment from light's perspective
-    float currentDepth = projCoords.z;
-
-    // Bias to prevent shadow acne
-    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
-
-    // PCF (Percentage Closer Filtering) for softer shadows
+    float bias = max(0.005 * (1.0 - dot(N, L)), 0.001);
     float shadow = 0.0;
+    float currentDepth = projCoords.z;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x = -1; x <= 1; ++x) {
-        for(int y = -1; y <= 1; ++y) {
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
         }
     }
-    shadow /= 9.0;
-
-    return shadow;
+    return shadow / 9.0;
 }
 
-// --- PBR Utilities ---
+// --- PBR Functions ---
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
-    float f = clamp(1.0 - cosTheta, 0.0, 1.0);
-    float f5 = f*f*f*f*f;
+    float f5 = pow(1.0 - clamp(cosTheta, 0.0, 1.0), 5.0);
     return F0 + (1.0 - F0) * f5;
 }
-
 float distributionGGX(vec3 N, vec3 H, float roughness) {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH = max(dot(N,H),0.0);
-    float denom = (NdotH*NdotH)*(a2-1.0)+1.0;
-    return a2 / max(PI*denom*denom, EPSILON);
+    float a2 = roughness * roughness;
+    float NdotH = max(dot(N, H), 0.0);
+    float denom = (NdotH * NdotH) * (a2 - 1.0) + 1.0;
+    return a2 / max(PI * denom * denom, EPSILON);
 }
-
 float geometrySchlickGGX(float NdotV, float roughness) {
-    float r = roughness + 1.0;
-    float k = (r*r)/8.0;
-    return NdotV / max(NdotV*(1.0-k)+k, EPSILON);
+    float k = (roughness + 1.0);
+    k = k * k / 8.0;
+    return NdotV / max(NdotV * (1.0 - k) + k, EPSILON);
 }
-
 float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
-    float NdotV = max(dot(N,V),0.0);
-    float NdotL = max(dot(N,L),0.0);
-    return geometrySchlickGGX(NdotV,roughness)*geometrySchlickGGX(NdotL,roughness);
+    return geometrySchlickGGX(max(dot(N, V), 0.0), roughness) *
+           geometrySchlickGGX(max(dot(N, L), 0.0), roughness);
 }
-
 vec3 cookTorranceBRDF(vec3 N, vec3 V, vec3 L, vec3 radiance, vec3 albedo, float metallic, float roughness, vec3 F0) {
-    vec3 H = normalize(V+L);
-    float NdotV = max(dot(N,V),0.0);
-    float NdotL = max(dot(N,L),0.0);
-    float HdotV = max(dot(H,V),0.0);
-    if(NdotL<=0.0) return vec3(0.0);
+    vec3 H = normalize(V + L);
+    float NdotL = max(dot(N, L), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
 
-    float NDF = distributionGGX(N,H,roughness);
-    float G = geometrySmith(N,V,L,roughness);
-    vec3 F = fresnelSchlick(HdotV,F0);
+    float NDF = distributionGGX(N, H, roughness);
+    float G   = geometrySmith(N, V, L, roughness);
+    vec3 F    = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
     vec3 kS = F;
-    vec3 kD = (1.0-metallic)*(vec3(1.0)-kS);
+    vec3 kD = (1.0 - metallic) * (vec3(1.0) - kS);
     vec3 diffuse = kD * albedo * INV_PI;
-    vec3 specular = (NDF*G*F)/max(4.0*NdotV*NdotL,EPSILON);
+    vec3 specular = (NDF * G * F) / max(4.0 * max(dot(N,V),0.0) * NdotL, EPSILON);
 
     return (diffuse + specular) * radiance * NdotL;
 }
-
 float calculateAttenuation(float distance, float radius) {
-    float constant = 1.0;
-    float linear = 0.09;
-    float quadratic = 0.032;
-    float att = 1.0 / max(constant + linear*distance + quadratic*distance*distance, EPSILON);
-    if(radius>0.0){
-        float x = clamp(1.0 - distance/radius,0.0,1.0);
-        att *= x*x*(3.0-2.0*x);
+    float att = 1.0 / max(1.0 + 0.09*distance + 0.032*distance*distance, EPSILON);
+    if (radius > 0.0) {
+        float x = clamp(1.0 - distance / radius, 0.0, 1.0);
+        att *= x * x * (3.0 - 2.0 * x);
     }
     return att;
 }
 
-vec3 gammaCorrect(vec3 color){
-    return pow(color, vec3(1.0/2.2));
-}
-
 // --- Main ---
-void main(){
-    if(useLighting==0){
-        FragColor = overrideColor;
-        return;
-    }
+void main() {
+    if (useLighting == 0) { FragColor = overrideColor; return; }
 
-    // Base color - convert to linear space
-    vec4 baseColor = useTextures ? texture(diffuseSampler,outTexCoord) : material.diffuse;
-    vec3 albedo = pow(baseColor.rgb, vec3(2.2));
-    float metallic = material.metallic;
-    float roughness = max(material.roughness, 0.04);
+    vec4 baseColor = useTextures ? texture(diffuseSampler, outTexCoord) : material.diffuse;
+    if (baseColor.a < 0.01) discard;
+
+    vec3 albedo = srgbToLinear(baseColor.rgb);
+    float alpha = baseColor.a;
+
+    float metallic = clamp(material.metallic, 0.0, 1.0);
+    float roughness = clamp(material.roughness, 0.04, 1.0);
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     vec3 N = normalize(Normal);
     vec3 V = normalize(viewPosition - FragPos);
+    if (!gl_FrontFacing) N = -N;
+
     vec3 Lo = vec3(0.0);
 
-    // Calculate shadow for directional lights
-    float shadow = 0.0;
-    if(numDirLights > 0) {
-        vec3 lightDir = normalize(-dirLights[0].direction);
-        shadow = calculateShadow(FragPosLightSpace, N, lightDir);
-    }
-
-    // --- Point Lights ---
-    for(int i=0;i<numPointLights;i++){
+    // Point Lights
+    for (int i = 0; i < numPointLights; i++) {
         PointLight l = pointLights[i];
         vec3 L = l.position - FragPos;
         float dist = length(L);
-        L /= max(dist,EPSILON);
-        float att = calculateAttenuation(dist,l.radius);
-        vec3 radiance = l.diffuse.rgb*l.strength*att;
-        Lo += cookTorranceBRDF(N,V,L,radiance,albedo,metallic,roughness,F0);
+        L /= max(dist, EPSILON);
+
+        vec3 radiance = l.diffuse.rgb * l.strength * calculateAttenuation(dist, l.radius);
+        Lo += cookTorranceBRDF(N, V, L, radiance, albedo, metallic, roughness, F0);
     }
 
-    // --- Directional Lights (with shadows) ---
-    for(int i=0;i<numDirLights;i++){
+    // Directional Lights
+    for (int i = 0; i < numDirLights; i++) {
         DirLight l = dirLights[i];
         vec3 L = normalize(-l.direction);
-        vec3 radiance = l.diffuse.rgb*l.strength;
-
-        // Apply shadow only to first directional light
-        float shadowFactor = (i == 0) ? (1.0 - shadow * 0.8) : 1.0;
-
-        Lo += cookTorranceBRDF(N,V,L,radiance,albedo,metallic,roughness,F0) * shadowFactor;
+        vec3 radiance = l.diffuse.rgb * l.strength;
+        float shadowFactor = (i==0) ? (1.0 - calculateShadow(FragPosLightSpace, N, L) * 0.8) : 1.0;
+        Lo += cookTorranceBRDF(N, V, L, radiance, albedo, metallic, roughness, F0) * shadowFactor;
     }
 
-    // Ambient light - convert to linear space and multiply by albedo
-    vec3 ambientLinear = pow(material.ambient.rgb, vec3(2.2));
-    vec3 ambient = ambientLinear * albedo;
-
-    // Block light - treat as indirect lighting
-    vec3 blockLightContribution = blockLight * albedo;
-
-    // Emission
+    // Ambient + block + emission
+    vec3 ambient = srgbToLinear(material.ambient.rgb) * albedo * 0.3;
+    vec3 blockLightLinear = srgbToLinear(blockLight);
     vec3 emissionContribution = emission * albedo;
+    vec3 color = ambient + Lo + blockLightLinear * albedo + emissionContribution;
 
-    // Combine all lighting in linear space
-    vec3 color = ambient + Lo + blockLightContribution + emissionContribution;
-
-    // Apply gamma correction at the very end
-    color = gammaCorrect(color);
-
-    FragColor = vec4(color, baseColor.a);
+    // Reinhard tone mapping + gamma correction
+    color = linearToSrgb(color / (color + vec3(1.0)));
+    FragColor = vec4(color * alpha, alpha);
 }

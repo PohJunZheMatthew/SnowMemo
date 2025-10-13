@@ -495,53 +495,86 @@ public class FileChooser extends Window {
         final File file;
         final BillboardGUI billboardGUI;
         final GUIComponent guiComponent;
+
         public FileIcon(File file) {
             this.mesh = Utils.loadObj(this.getClass().getResourceAsStream("File.obj"));
             this.file = file;
 
-            this.guiComponent = new GUIComponent(currentFileChooser,0.25f,0.25f) {
+            // Create GUI component with transparent background
+            this.guiComponent = new GUIComponent(currentFileChooser, 0.05f, 0.05f) {
                 @Override
                 protected void paintComponent(Graphics g) {
-                    Graphics2D graphics2D = (Graphics2D) g;
-                    Font basefont = SnowMemo.currentTheme.getFonts()[0].deriveFont(128f);
+                    // IMPORTANT: Clear with transparency
+                    Graphics2D g2d = (Graphics2D) g.create();
 
-                    // Auto-scale text to fit
+                    // Enable alpha composite for transparency
+                    g2d.setComposite(AlphaComposite.Clear);
+                    g2d.fillRect(0, 0, widthPx, heightPx);
+                    g2d.setComposite(AlphaComposite.SrcOver);
+                    g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                            RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+
+                    Font basefont = SnowMemo.currentTheme.getFonts()[0].deriveFont(128f);
                     String text = file.getName();
+
+                    // Auto-scale
                     float fontSize = basefont.getSize2D();
                     Font scaledFont = basefont.deriveFont(fontSize);
-                    FontMetrics fm = graphics2D.getFontMetrics(scaledFont);
+                    FontMetrics fm = g2d.getFontMetrics(scaledFont);
 
-                    // Scale down if text is too wide OR too tall
-                    while ((fm.stringWidth(text) > widthPx || fm.getHeight() > heightPx) && fontSize > 1) {
+                    while ((fm.stringWidth(text) > widthPx || fm.getHeight() > heightPx)
+                            && fontSize > 1) {
                         fontSize -= 0.5f;
                         scaledFont = basefont.deriveFont(fontSize);
-                        fm = graphics2D.getFontMetrics(scaledFont);
+                        fm = g2d.getFontMetrics(scaledFont);
                     }
 
-                    graphics2D.setFont(scaledFont);
+                    g2d.setFont(scaledFont);
 
-                    // Set text color (this was missing!)
-                    graphics2D.setColor(Color.BLACK); // or SnowMemo.currentTheme.getFontColors()[0]
+                    // Optional: Add semi-transparent background for better readability
+                    g2d.setColor(new Color(255, 255, 255, 200)); // White with 200/255 alpha
+                    int textWidth = fm.stringWidth(text);
+                    int textHeight = fm.getHeight();
+                    int padding = 10;
+                    int x = (widthPx - textWidth) / 2;
+                    int y = ((heightPx - textHeight) / 2) + fm.getAscent();
 
-                    // Center the text
-                    int x = (widthPx - fm.stringWidth(text)) / 2;
-                    int y = ((heightPx - fm.getHeight()) / 2) + fm.getAscent();
+                    // Draw rounded rectangle background
+                    g2d.fillRoundRect(
+                            x - padding,
+                            y - fm.getAscent() - padding/2,
+                            textWidth + padding * 2,
+                            textHeight + padding,
+                            15, 15
+                    );
 
-                    graphics2D.drawString(text, x, y);
+                    // Draw text
+                    g2d.setColor(Color.BLACK);
+                    g2d.drawString(text, x, y);
+
+                    g2d.dispose();
                 }
 
                 @Override
-                public void init() {
-
-                }
+                public void init() { }
             };
+
+            // Create billboard - texture is created once here
             billboardGUI = new BillboardGUI(currentFileChooser, guiComponent);
         }
-        public void render(){
+
+        public void render() {
             mesh.render(currentFileChooser.camera);
-            billboardGUI.setPosition(new Vector3f(mesh.getPosition().x,mesh.getPosition().y-0.625f,mesh.getPosition().z));
-            billboardGUI.setRotation(new Vector3f(0,(float) Math.PI, (float) Math.PI));
-            billboardGUI.setScale(new Vector3f(0.75f,0.375f,0.5f));
+
+            billboardGUI.setPosition(new Vector3f(
+                    mesh.getPosition().x,
+                    mesh.getPosition().y - 0.625f,
+                    mesh.getPosition().z
+            ));
+            billboardGUI.setRotation(new Vector3f(0, (float) Math.PI, (float) Math.PI));
+            billboardGUI.setScale(new Vector3f(0.75f, 0.375f, 0.5f));
+
+            // Render billboard with transparency
             billboardGUI.render(currentFileChooser.camera);
         }
     }
