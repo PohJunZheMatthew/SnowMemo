@@ -18,6 +18,10 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.system.MemoryUtil;
 
 public class Mesh implements Renderable {
+    private int queryId = -1;
+    protected boolean visible = true;
+    protected boolean renderVisible = true;
+    private boolean queryPending = false;
     protected boolean outline = true;
     protected final int vaoId;
     protected final int vboId;
@@ -465,6 +469,9 @@ public class Mesh implements Renderable {
         shaderProgram.unbind();
     }
     public void cleanUp() {
+        if (queryId != -1) {
+            glDeleteQueries(queryId);
+        }
         glDisableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glDeleteBuffers(vboId);      // Add this line
@@ -498,7 +505,7 @@ public class Mesh implements Renderable {
         this.scale = scale;
         return this;
     }
-    public class Material {
+    public static class Material {
         Vector4f ambient;
         Vector4f diffuse;
         Vector4f specular;
@@ -547,8 +554,74 @@ public class Mesh implements Renderable {
             if (verticesBuffer != null) memFree(verticesBuffer);
         }
     }
-
     public float[] getVertices() {
         return vertices;
+    }
+    public Material getMaterial(){
+        return material;
+    }
+    public void setMaterial(Material material){
+        this.material = material;
+    }
+    public void renderBoundingBox(Camera camera) {
+        // Basic bounding cube centered at position, scaled appropriately
+        Matrix4f model = new Matrix4f()
+                .translation(position)
+                .rotateXYZ(rotation)
+                .scale(scale);
+
+        shaderProgram.createUniformIfAbsent("projectionMatrix");
+        shaderProgram.createUniformIfAbsent("viewMatrix");
+        shaderProgram.createUniformIfAbsent("modelMatrix");
+
+        shaderProgram.bind();
+        shaderProgram.setUniform("projectionMatrix", win.getProjectionMatrix());
+        shaderProgram.setUniform("viewMatrix", camera.getViewMatrix());
+        shaderProgram.setUniform("modelMatrix", model);
+
+        glBindVertexArray(vaoId);
+        glDrawElements(GL_TRIANGLES, vertexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+
+        shaderProgram.unbind();
+    }
+    public void beginOcclusionQuery(Camera camera) {
+        if (queryId == -1) {
+            queryId = glGenQueries();
+        }
+        glColorMask(false, false, false, false);
+        glDepthMask(false);
+
+        glBeginQuery(GL_SAMPLES_PASSED, queryId);
+        renderBoundingBox(camera);
+        glEndQuery(GL_SAMPLES_PASSED);
+
+        glColorMask(true, true, true, true);
+        glDepthMask(true);
+
+        queryPending = true;
+    }
+    public void updateOcclusionResult() {
+        if (!queryPending) return;
+
+        int available = glGetQueryObjecti(queryId, GL_QUERY_RESULT_AVAILABLE);
+        if (available != 0) {
+            int samples = glGetQueryObjecti(queryId, GL_QUERY_RESULT);
+            renderVisible = samples > 0;
+            queryPending = false;
+        }
+    }
+
+    public boolean isRenderVisible() {
+        return renderVisible;
+    }
+
+    public boolean isVisible() {
+        return visible;
+    }
+
+    public Mesh setVisible(boolean visible) {
+        this.visible = visible;
+        return this;
     }
 }

@@ -143,8 +143,8 @@ public class BillboardGUI extends Mesh {
 
         // Only update if difference is significant (more than 1% change)
         if (widthDiff > 0.01f || heightDiff > 0.01f) {
-            mainGUIComponent.setWidth(widthPercentage);
-            mainGUIComponent.setHeight(heightPercentage);
+            mainGUIComponent.setWidth(widthPercentage*2);
+            mainGUIComponent.setHeight(heightPercentage*2);
             markDirty(); // Mark for texture update
         }
     }

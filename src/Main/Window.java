@@ -2,10 +2,9 @@ package Main;
 
 import GUI.GUIComponent;
 import org.joml.Matrix4f;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.*;
-import org.lwjgl.opengl.GL;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.IntBuffer;
@@ -39,7 +38,6 @@ public class Window {
     public double getMouseY() { return mouseY; }
 
     public Window(){}
-
     public Window(String title){
         currentWindow = this;
         if (!GLFW.glfwInit()) throw new RuntimeException("Can't init glfw");
@@ -181,25 +179,29 @@ public class Window {
     public void render(List<Renderable> meshes){
         GLFW.glfwMakeContextCurrent(window);
         GLFW.glfwPollEvents();
-
-        // Get actual framebuffer size (handles HiDPI displays)
-        IntBuffer fbWidth = MemoryUtil.memAllocInt(1);
-        IntBuffer fbHeight = MemoryUtil.memAllocInt(1);
-        GLFW.glfwGetFramebufferSize(window, fbWidth, fbHeight);
-        int actualWidth = fbWidth.get(0);
-        int actualHeight = fbHeight.get(0);
-        MemoryUtil.memFree(fbWidth);
-        MemoryUtil.memFree(fbHeight);
-        GL11.glViewport(0, 0, actualWidth, actualHeight);
-
-        float aspectRatio = (float) actualWidth / actualHeight;
-        projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio, Z_NEAR, Z_FAR);
-
+        GL11.glViewport(0, 0, width, height);
+        float aspectRatio1 = (float) width / height;
+        projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio1, Z_NEAR, Z_FAR);
+        int id = GL30.glGenQueries();
+        GL30.glBeginQuery(GL15.GL_SAMPLES_PASSED,id);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        for (Renderable r : meshes) {
+            if (r instanceof Mesh mesh) {
+                mesh.updateOcclusionResult();
+            }
+        }
+        for (Renderable r : meshes) {
+            if (r instanceof Mesh mesh) {
+                mesh.beginOcclusionQuery(SnowMemo.camera);
+            }
+        }
         for (Renderable m:meshes) {
             if (m instanceof Mesh) ((Mesh) m).render(SnowMemo.camera); else m.render();
         }
         GUIComponent.renderGUIs(this);
+        GL30.glEndQuery(id);
+        int result = GL30.glGetQueryObjecti(id,GL15.GL_QUERY_RESULT);
+        GL30.glDeleteQueries(id);
         GLFW.glfwSwapBuffers(window);
     }
 

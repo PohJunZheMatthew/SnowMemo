@@ -623,8 +623,11 @@ public abstract class GUIComponent implements Renderable {
         paintComponent(g);
     }
     public BufferedImage print(){
+        return print(widthPx,heightPx);
+    }
+    public BufferedImage print(int width,int height){
         updateHitBox();
-        BufferedImage bufferedImage = new BufferedImage(widthPx,heightPx,BufferedImage.TYPE_INT_ARGB);
+        BufferedImage bufferedImage = new BufferedImage(widthPx*2,heightPx*2,BufferedImage.TYPE_INT_ARGB);
         paintComponent(bufferedImage.createGraphics());
         return bufferedImage;
     }
