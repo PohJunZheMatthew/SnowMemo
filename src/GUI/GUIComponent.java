@@ -625,7 +625,7 @@ public abstract class GUIComponent implements Renderable {
     public BufferedImage print(){
         return print(widthPx,heightPx);
     }
-    float scale = 1.25f;
+    float scale = 1f;
     protected BufferedImage prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
     public BufferedImage print(int width,int height){
         updateHitBox();

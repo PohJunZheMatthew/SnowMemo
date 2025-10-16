@@ -15,6 +15,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL40;
 import org.lwjgl.system.MemoryUtil;
 
 public class Mesh implements Renderable {
@@ -301,7 +302,7 @@ public class Mesh implements Renderable {
             shaderProgram.createUniform("material.shininess");
             shaderProgram.createUniform("material.metallic");
             shaderProgram.createUniform("material.roughness");
-
+            initOcclusionShader();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize shader uniforms", e);
         }
@@ -320,6 +321,8 @@ public class Mesh implements Renderable {
     // In the render() method, replace the transparency handling section with this:
 
     public void render(Camera camera){
+        if (!renderVisible) return;
+        if (!visible) return;
         GL11.glLineWidth(1);
 
         // Ensure all required uniforms exist
@@ -563,55 +566,70 @@ public class Mesh implements Renderable {
     public void setMaterial(Material material){
         this.material = material;
     }
-    public void renderBoundingBox(Camera camera) {
-        // Basic bounding cube centered at position, scaled appropriately
+    public static ShaderProgram occlusionShader;
+
+    public static void initOcclusionShader() throws Exception {
+        occlusionShader = new ShaderProgram();
+        occlusionShader.createVertexShader(Utils.loadResource("Occlusion.vs"));
+        occlusionShader.createFragmentShader(Utils.loadResource("Occlusion.fs"));
+        occlusionShader.link();
+
+        occlusionShader.createUniform("projectionMatrix");
+        occlusionShader.createUniform("viewMatrix");
+        occlusionShader.createUniform("modelMatrix");
+    }
+    public void renderBoundingBox(Camera camera, ShaderProgram shader) {
         Matrix4f model = new Matrix4f()
                 .translation(position)
                 .rotateXYZ(rotation)
                 .scale(scale);
 
-        shaderProgram.createUniformIfAbsent("projectionMatrix");
-        shaderProgram.createUniformIfAbsent("viewMatrix");
-        shaderProgram.createUniformIfAbsent("modelMatrix");
-
-        shaderProgram.bind();
-        shaderProgram.setUniform("projectionMatrix", win.getProjectionMatrix());
-        shaderProgram.setUniform("viewMatrix", camera.getViewMatrix());
-        shaderProgram.setUniform("modelMatrix", model);
+        shader.bind();
+        shader.setUniform("projectionMatrix", win.getProjectionMatrix());
+        shader.setUniform("viewMatrix", camera.getViewMatrix());
+        shader.setUniform("modelMatrix", model);
 
         glBindVertexArray(vaoId);
         glDrawElements(GL_TRIANGLES, vertexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
-        shaderProgram.unbind();
+        shader.unbind();
     }
+
     public void beginOcclusionQuery(Camera camera) {
-        if (queryId == -1) {
+        if (queryId == -1)
             queryId = glGenQueries();
-        }
+
+        glEnable(GL_DEPTH_TEST);
         glColorMask(false, false, false, false);
         glDepthMask(false);
 
-        glBeginQuery(GL_SAMPLES_PASSED, queryId);
-        renderBoundingBox(camera);
-        glEndQuery(GL_SAMPLES_PASSED);
+        glBeginQuery(GL40.GL_ANY_SAMPLES_PASSED, queryId);
+
+        renderBoundingBox(camera, occlusionShader);
+
+        glEndQuery(GL40.GL_ANY_SAMPLES_PASSED);
 
         glColorMask(true, true, true, true);
         glDepthMask(true);
 
         queryPending = true;
     }
-    public void updateOcclusionResult() {
+    public void updateCulling(Frustum frustum) {
         if (!queryPending) return;
+
+        modelMatrix.identity().translate(position).rotateXYZ(rotation).scale(scale);
+
+        Vector3f min = getMin();
+        Vector3f max = getMax();
 
         int available = glGetQueryObjecti(queryId, GL_QUERY_RESULT_AVAILABLE);
         if (available != 0) {
             int samples = glGetQueryObjecti(queryId, GL_QUERY_RESULT);
-            renderVisible = samples > 0;
+            renderVisible = frustum.isBoxInFrustum(min, max);
             queryPending = false;
         }
     }
-
     public boolean isRenderVisible() {
         return renderVisible;
     }
@@ -623,5 +641,25 @@ public class Mesh implements Renderable {
     public Mesh setVisible(boolean visible) {
         this.visible = visible;
         return this;
+    }
+    public Vector3f getMin() {
+        Vector3f min = new Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE);
+        for (int i = 0; i < vertices.length; i += 8) {
+            min.x = Math.min(min.x, vertices[i]);
+            min.y = Math.min(min.y, vertices[i + 1]);
+            min.z = Math.min(min.z, vertices[i + 2]);
+        }
+        // Apply world transform
+        return modelMatrix.transformPosition(min);
+    }
+
+    public Vector3f getMax() {
+        Vector3f max = new Vector3f(Float.MIN_VALUE, Float.MIN_VALUE, Float.MIN_VALUE);
+        for (int i = 0; i < vertices.length; i += 8) {
+            max.x = Math.max(max.x, vertices[i]);
+            max.y = Math.max(max.y, vertices[i + 1]);
+            max.z = Math.max(max.z, vertices[i + 2]);
+        }
+        return modelMatrix.transformPosition(max);
     }
 }

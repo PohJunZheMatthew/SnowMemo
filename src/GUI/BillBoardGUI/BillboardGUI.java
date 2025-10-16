@@ -145,8 +145,8 @@ public class BillboardGUI extends Mesh {
 
         // Only update if difference is significant (more than 1% change)
         if (widthDiff > 0.01f || heightDiff > 0.01f) {
-            mainGUIComponent.setWidth(widthPercentage*2);
-            mainGUIComponent.setHeight(heightPercentage*2);
+            mainGUIComponent.setWidth(widthPercentage*1.5f);
+            mainGUIComponent.setHeight(heightPercentage*1.5f);
             markDirty(); // Mark for texture update
         }
     }
@@ -186,7 +186,7 @@ public class BillboardGUI extends Mesh {
         ByteBuffer buffer = BufferUtils.createByteBuffer(data.length);
         buffer.put(data).flip();
 
-        // Update existing texture - DO NOT create new one
+        // Update existing texture - DO NOT create new onex
         texture.bind();
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height,

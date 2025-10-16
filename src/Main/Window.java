@@ -11,9 +11,9 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import static Main.SnowMemo.camera;
 import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_CORE_PROFILE;
-import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
-import static org.lwjgl.opengl.GL11.glClearColor;
+import static org.lwjgl.opengl.GL11.*;
 
 public class Window {
     protected long window;
@@ -177,6 +177,9 @@ public class Window {
     }
 
     public void render(List<Renderable> meshes){
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW); // or GL_CW depending on your vertex order
         GLFW.glfwMakeContextCurrent(window);
         GLFW.glfwPollEvents();
         GL11.glViewport(0, 0, width, height);
@@ -185,18 +188,22 @@ public class Window {
         int id = GL30.glGenQueries();
         GL30.glBeginQuery(GL15.GL_SAMPLES_PASSED,id);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        Frustum frustum = new Frustum();
+        Matrix4f projView = new Matrix4f(projectionMatrix)
+                .mul(camera.getViewMatrix());
+        frustum.update(projView);
         for (Renderable r : meshes) {
             if (r instanceof Mesh mesh) {
-                mesh.updateOcclusionResult();
+                mesh.updateCulling(frustum);
             }
         }
         for (Renderable r : meshes) {
             if (r instanceof Mesh mesh) {
-                mesh.beginOcclusionQuery(SnowMemo.camera);
+                mesh.beginOcclusionQuery(camera);
             }
         }
         for (Renderable m:meshes) {
-            if (m instanceof Mesh) ((Mesh) m).render(SnowMemo.camera); else m.render();
+            if (m instanceof Mesh) ((Mesh) m).render(camera); else m.render();
         }
         GUIComponent.renderGUIs(this);
         GL30.glEndQuery(id);
