@@ -408,36 +408,36 @@ public class SnowMemo {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
     public static void main(String[] args) {
-        System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
-        System.setProperty("https.protocols", "TLSv1.2");
-        String connectionString = "mongodb+srv://pohjunzhematthew:Inukacom1612@snowmemo.kyxexhg.mongodb.net/?retryWrites=true&w=majority&appName=SnowMemo";
-        ServerApi serverApi = ServerApi.builder()
-                .version(ServerApiVersion.V1)
-                .build();
-        MongoClientSettings settings = MongoClientSettings.builder()
-                .applyConnectionString(new ConnectionString(connectionString))
-                .serverApi(serverApi)
-                .build();
-        try (MongoClient mongoClient = MongoClients.create(settings)) {
-            try {
-                MongoDatabase database = mongoClient.getDatabase("SnowMemo");
-                database.runCommand(new Document("ping", 1));
-                System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
-                MongoCollection<Document> collection = (MongoCollection<Document>) database.getCollection("Users");
-                for (Document doc:collection.find()){
-                    if (doc.containsKey("user")){
-                        if (((Document)doc.get("user")).containsKey("userName")){
-                            if (((Document)doc.get("user")).get("userName").equals("Admin")){
-                                System.out.println(doc.toJson());
-                            }
-                        }
-                    }
-                }
-                mongoClient.close();
-            } catch (MongoException e) {
-                e.printStackTrace();
-            }
-        }
+//        System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
+//        System.setProperty("https.protocols", "TLSv1.2");
+//        String connectionString = "mongodb+srv://pohjunzhematthew:Inukacom1612@snowmemo.kyxexhg.mongodb.net/?retryWrites=true&w=majority&appName=SnowMemo";
+//        ServerApi serverApi = ServerApi.builder()
+//                .version(ServerApiVersion.V1)
+//                .build();
+//        MongoClientSettings settings = MongoClientSettings.builder()
+//                .applyConnectionString(new ConnectionString(connectionString))
+//                .serverApi(serverApi)
+//                .build();
+//        try (MongoClient mongoClient = MongoClients.create(settings)) {
+//            try {
+//                MongoDatabase database = mongoClient.getDatabase("SnowMemo");
+//                database.runCommand(new Document("ping", 1));
+//                System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
+//                MongoCollection<Document> collection = (MongoCollection<Document>) database.getCollection("Users");
+//                for (Document doc:collection.find()){
+//                    if (doc.containsKey("user")){
+//                        if (((Document)doc.get("user")).containsKey("userName")){
+//                            if (((Document)doc.get("user")).get("userName").equals("Admin")){
+//                                System.out.println(doc.toJson());
+//                            }
+//                        }
+//                    }
+//                }
+//                mongoClient.close();
+//            } catch (MongoException e) {
+//                e.printStackTrace();
+//            }
+//        }
         try {
             System.setProperty("apple.awt.application.name", "SnowMemo");
             System.setProperty("java.awt.headless", "true");

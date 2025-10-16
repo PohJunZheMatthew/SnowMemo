@@ -496,11 +496,6 @@
                     running[0] = false;
                     break;
                 }
-                try {
-                    sleep(0);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
             }
             running[0] = false;
             GLFW.glfwHideWindow(window);
@@ -553,7 +548,7 @@
                     protected void paintComponent(Graphics g) {
                         // IMPORTANT: Clear with transparency
                         Graphics2D g2d = (Graphics2D) g.create();
-                        g2d.scale(2,1.875f);
+                        g2d.scale(1.25f,1.25f);
                         // Enable alpha composite for transparency
                         g2d.setComposite(AlphaComposite.Clear);
                         g2d.fillRect(0, 0, widthPx, heightPx);
@@ -607,8 +602,8 @@
 
                 // Keep billboard positioned under the mesh
                 billboardGUI.setPosition(new Vector3f(
-                        mesh.getPosition().x,
-                        mesh.getPosition().y - 0.75f,
+                        mesh.getPosition().x - 0.025f,
+                        mesh.getPosition().y - 0.7f,
                         mesh.getPosition().z
                 ));
                 billboardGUI.setRotation(new Vector3f(0, (float) Math.PI, (float) Math.PI));
@@ -620,7 +615,12 @@
                 billboardGUI.setScale(new Vector3f(baseScale * aspect, baseScale, baseScale));
 
                 // Render the billboard
+
+
+                long start = System.nanoTime();
                 if (billboardGUI.isRenderVisible()) billboardGUI.render(currentFileChooser.camera);
+                long end = System.nanoTime();
+                System.out.println("Billboard time: " + (end - start) / 1_000_000.0 + " ms");
             }
 
         }

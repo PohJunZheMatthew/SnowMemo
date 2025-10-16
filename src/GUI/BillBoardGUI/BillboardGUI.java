@@ -3,6 +3,7 @@ package GUI.BillBoardGUI;
 import GUI.GUIComponent;
 import Main.*;
 import Main.Window;
+import com.mongodb.lang.NonNull;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -68,7 +69,8 @@ public class BillboardGUI extends Mesh {
     /**
      * Projects a 3D world position to 2D screen coordinates
      */
-    private Vector2f projectToScreen(Vector3f worldPos, Camera camera, Matrix4f projectionMatrix, int screenWidth, int screenHeight) {
+    @NonNull
+    private Vector2f projectToScreen(@NonNull Vector3f worldPos, @NonNull Camera camera,@NonNull Matrix4f projectionMatrix, int screenWidth, int screenHeight) {
         // Create model matrix for this billboard
         Matrix4f modelMatrix = new Matrix4f()
                 .identity()

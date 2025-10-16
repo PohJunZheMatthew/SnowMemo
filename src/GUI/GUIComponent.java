@@ -625,10 +625,14 @@ public abstract class GUIComponent implements Renderable {
     public BufferedImage print(){
         return print(widthPx,heightPx);
     }
+    float scale = 1.25f;
+    protected BufferedImage prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
     public BufferedImage print(int width,int height){
         updateHitBox();
-        BufferedImage bufferedImage = new BufferedImage(widthPx*2,heightPx*2,BufferedImage.TYPE_INT_ARGB);
-        paintComponent(bufferedImage.createGraphics());
-        return bufferedImage;
+        if (prebufferedimage.getWidth()!=(int) (widthPx*scale) || prebufferedimage.getHeight()!=(int) (heightPx*scale)){
+            prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
+        }
+        paintComponent(prebufferedimage.createGraphics());
+        return prebufferedimage;
     }
 }
