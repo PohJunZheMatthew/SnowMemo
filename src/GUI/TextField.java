@@ -62,15 +62,15 @@ public class TextField extends GUIComponent {
     }
 
     private void initCallbacks(Window window) {
-        window.DropCallbacks.add(new GLFWDropCallback() {
-            @Override
-            public void invoke(long window, int count, long names) {
-                for (int i = 0; i < count; i++) {
-                    String droppedText = GLFWDropCallback.getName(names, i);
-                    insertText(droppedText);
-                }
-            }
-        });
+//        window.DropCallbacks.add(new GLFWDropCallback() {
+//            @Override
+//            public void invoke(long window, int count, long names) {
+//                for (int i = 0; i < count; i++) {
+//                    String droppedText = GLFWDropCallback.getName(names, i);
+//                    insertText(droppedText);
+//                }
+//            }
+//        });
         window.KeyCallbacks.add(new GLFWKeyCallback() {
             @Override
             public void invoke(long win, int key, int scancode, int action, int mods) {

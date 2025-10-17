@@ -42,10 +42,10 @@ public class FileChooser extends Window {
     private Camera camera;
     private final ArrayList<FileChooserIcon> fileChooserIcons = new ArrayList<>();
     float mouseWheelVelocity = 0;
-    float zoom = 1;
-    float perZoom = 1.0f;
-    static int MAX_ZOOM = 10;
-    static final int MIN_ZOOM = 1;
+    float scroll = 1;
+    float perScroll = 1.0f;
+    static int MAX_SCROLL = 10;
+    static final int MIN_SCROLL = 1;
     private final float[] originalBackgroundCubeVerts;
     public FileChooser() {
         long monitor = GLFW.glfwGetPrimaryMonitor();
@@ -107,6 +107,8 @@ public class FileChooser extends Window {
                     String path = GLFWDropCallback.getName(names, 0);
                     File f = new File(path);
                     if (f.isFile()) {
+                        fileNameTextField.setText("");
+                        fileNameTextField.setText(f.getName());
                         currentDirectory = new File(f.getParent());
                     }else{
                         currentDirectory = f;
@@ -231,12 +233,12 @@ public class FileChooser extends Window {
                         suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200));
                         suggestionLabel.setTextColor(new Color(33, 37, 41));
                         suggestionLabel.addCallBack((MouseEnterCallBack) _ -> suggestionLabel.setBackgroundColor(new Color(230, 240, 255)));
-                        suggestionLabel.addCallBack((MouseExitCallBack) e -> suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200)));
+                        suggestionLabel.addCallBack((MouseExitCallBack) _ -> suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200)));
                         if (suggestionLabels.size() == selectedSuggestionIndex) {
                             suggestionLabel.setBackgroundColor(SnowMemo.currentTheme.getSecondaryColors()[1]);
                             suggestionLabel.setTextColor(Color.WHITE);
                         }
-                        suggestionLabel.addCallBack((MouseClickCallBack) e -> {
+                        suggestionLabel.addCallBack((MouseClickCallBack) _ -> {
                             fileNameTextField.setText(suggestionLabel.getText());
                             fileNameTextField.setCursorPosition(-1);
                         });
@@ -279,11 +281,8 @@ public class FileChooser extends Window {
             @Override
             public void init() { }
         };
-        cancelFileButton.addCallBack(new MouseClickCallBack() {
-            @Override
-            public void onEvent(MouseClickEvent e) {
+        cancelFileButton.addCallBack((MouseClickCallBack) _ -> {
 
-            }
         });
         chooseFileFrame = new GUIComponent(this, 0.05f, 0.875f, 0.9f, 0.1f) {
             @Override
@@ -390,23 +389,26 @@ public class FileChooser extends Window {
     public void update() {
         if (mouseWheelVelocity != 0) {
             float zoomSpeed = 0.5f;
-            float desiredZoom = zoom + mouseWheelVelocity * zoomSpeed;
-            desiredZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, desiredZoom));
-            float delta = desiredZoom - zoom;
+            float desiredZoom = scroll + mouseWheelVelocity * zoomSpeed;
+            desiredZoom = Math.max(MIN_SCROLL, Math.min(MAX_SCROLL, desiredZoom));
+            float delta = desiredZoom - scroll;
             if (delta != 0) {
                 if (camera.cameraMovement == Camera.CameraMovement.ZoomInAndOut) {
-                    camera.move(new Vector3f(0, 0, -delta)); // negative to zoom in
+                    camera.move(new Vector3f(0, 0, -delta)); // negative to scroll in
                 } else if (camera.cameraMovement == Camera.CameraMovement.ScrollUpAndDown) {
                     camera.move(new Vector3f(0, -delta, 0));
                 }
-                zoom = desiredZoom;
-                perZoom = (zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM);
+                scroll = desiredZoom;
+                perScroll = (scroll - MIN_SCROLL) / (MAX_SCROLL - MIN_SCROLL);
             }
             mouseWheelVelocity = 0;
         }
         if (!previousDirectory.getAbsolutePath().equals(currentDirectory.getAbsolutePath())) {
             for (FileChooserIcon icon:fileChooserIcons){
-                icon.mesh.cleanUp();icon.billboardGUI.cleanUp();
+                if (icon.mesh!=null) {
+                    icon.mesh.cleanUp();
+                    icon.billboardGUI.cleanUp();
+                }
             }
             fileChooserIcons.clear();
 
@@ -436,8 +438,10 @@ public class FileChooser extends Window {
                 fileChooserIcons.add(fileChooserIcon);
                 rows++;
             }
-            MAX_ZOOM = (int) ((rows*0.25f)+2f);
-            float lowerOffset = MAX_ZOOM / 4f - 0.25f;
+            int actualRows = (files.size() + columns - 1) / columns; // Ceiling division
+            MAX_SCROLL = Math.max(MIN_SCROLL, (int) (Math.max(0, actualRows - 3) * 1.5f) + 1);
+            float lowerOffset = spacing * Math.max(0, actualRows - 4)/3;
+            System.out.println("Lower offset: "+lowerOffset+" (rows: "+actualRows+", MAX_SCROLL: "+MAX_SCROLL+")");
             float[] verts = originalBackgroundCubeVerts.clone();
             for (int i = 0; i < verts.length; i += 6) {
                 float y = verts[i + 1];
@@ -491,7 +495,7 @@ public class FileChooser extends Window {
             long start = System.nanoTime();
             render();
             long end = System.nanoTime();
-            System.out.println("Frame time: " + (end - start) / 1_000_000.0 + " ms");
+//            System.out.println("Frame time: " + (end - start) / 1_000_000.0 + " ms");
             if (GLFW.glfwWindowShouldClose(window)){
                 running[0] = false;
                 break;
@@ -637,9 +641,9 @@ public class FileChooser extends Window {
             long start = System.nanoTime();
             if (billboardGUI.isRenderVisible()) billboardGUI.render(currentFileChooser.camera);
             long end = System.nanoTime();
-            System.out.println("mesh.isRenderVisible() = " + mesh.isRenderVisible());
-            System.out.println("billboardGUI.isRenderVisible() = " + billboardGUI.isRenderVisible());
-            System.out.println("Billboard time: " + (end - start) / 1_000_000.0 + " ms");
+//            System.out.println("mesh.isRenderVisible() = " + mesh.isRenderVisible());
+//            System.out.println("billboardGUI.isRenderVisible() = " + billboardGUI.isRenderVisible());
+//            System.out.println("Billboard time: " + (end - start) / 1_000_000.0 + " ms");
         }
     }
 }
