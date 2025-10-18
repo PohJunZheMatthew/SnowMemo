@@ -9,7 +9,6 @@ import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWMouseButtonCallback;
-import org.lwjgl.system.JNI;
 import org.lwjgl.system.MemoryUtil;
 
 import java.awt.*;
@@ -23,7 +22,9 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.*;
 import java.util.List;
+import javax.swing.Timer;
 
+import static java.lang.Thread.sleep;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.*;
 import static org.lwjgl.opengl.GL15.*;
@@ -64,7 +65,10 @@ public abstract class GUIComponent implements Renderable {
     protected boolean visible = true;
     protected boolean mouseInside = false;
     Shape hitBox;
-
+    private volatile BufferedImage preRenderedImage;
+    private Thread renderingThread;
+    private final Object imageLock = new Object();
+    private volatile boolean rendering = true;
     public GUIComponent(Window window) {
         this(window, 0.1f, 0.1f);
     }
@@ -129,12 +133,49 @@ public abstract class GUIComponent implements Renderable {
                 MemoryUtil.memFree(indicesBuffer);
             }
         }
-
         if (success) {
             initializeWindow(window);
             GUIComponents.get(window).put(hashCode(), this);
             hitBox = new Rectangle(xPx,yPx,widthPx,heightPx);
         }
+        renderingThread = new Thread(){
+            @Override
+            public void run(){
+                while(rendering) {
+                    int w, h;
+                    synchronized (imageLock) {  // Protect size reads
+                        w = widthPx;
+                        h = heightPx;
+                    }
+
+                    if (w <= 0 || h <= 0) {
+                        try {
+                            sleep(16);
+                            continue;
+                        } catch (InterruptedException e) {
+                            break;
+                        }
+                    }
+
+                    BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                    Graphics g = tempImage.createGraphics();
+                    paintComponent(g);
+                    g.dispose();
+
+                    synchronized (imageLock) {
+                        preRenderedImage = tempImage;
+                    }
+
+                    try {
+                        sleep(16);
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            }
+        };
+        renderingThread.setDaemon(true);
+        renderingThread.start();
     }
 
     /**
@@ -316,87 +357,93 @@ public abstract class GUIComponent implements Renderable {
     }
 
     protected void renderGUIImage() {
-        BufferedImage bi = new BufferedImage(Math.max(1, widthPx), Math.max(1, heightPx), BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = bi.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        paintComponent(g);
-        g.dispose();
-
-        if (texture != null) {
+        if (texture!=null){
             texture.cleanup();
         }
-        texture = Texture.loadTexture(bi);
+        BufferedImage imageToRender;
+        synchronized (imageLock) {
+            imageToRender = preRenderedImage;
+        }
+
+        if (imageToRender == null) {
+            BufferedImage bi = new BufferedImage(Math.max(1, widthPx), Math.max(1, heightPx), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = bi.createGraphics();
+            paintComponent(g);
+            g.dispose();
+            texture = Texture.loadTexture(bi);
+        } else {
+            texture = Texture.loadTexture(imageToRender);
+        }
 
         // Clear any existing errors
-        while (glGetError() != GL_NO_ERROR) { /* clear error queue */ }
+//        while (glGetError() != GL_NO_ERROR) { /* clear error queue */ }
 
         shaderProgram.bind();
 
-        int error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.err.println("ERROR after shader bind: " + error);
-            return;
-        }
+//        int error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.err.println("ERROR after shader bind: " + error);
+//            return;
+//        }
 
         Matrix4f projection = new Matrix4f().ortho(0, windowParent.getWidth(),
                 windowParent.getHeight(), 0, -1, 1);
         shaderProgram.setUniform("projection", projection);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.err.println("ERROR after projection uniform: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.err.println("ERROR after projection uniform: " + error);
+//            return;
+//        }
 
         Vector2f pos = new Vector2f(xPx, yPx);
         Vector2f size = new Vector2f(widthPx, heightPx);
         shaderProgram.setUniform("position", pos);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.err.println("ERROR after position uniform: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.err.println("ERROR after position uniform: " + error);
+//            return;
+//        }
 
         shaderProgram.setUniform("size", size);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.out.println("ERROR after size uniform: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.out.println("ERROR after size uniform: " + error);
+//            return;
+//        }
 
         glActiveTexture(GL_TEXTURE0);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.out.println("ERROR after glActiveTexture: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.out.println("ERROR after glActiveTexture: " + error);
+//            return;
+//        }
 
         texture.bind();
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.out.println("ERROR after texture bind: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.out.println("ERROR after texture bind: " + error);
+//            return;
+//        }
 
         shaderProgram.setUniform("guiTexture", 0);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.out.println("ERROR after texture uniform: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.out.println("ERROR after texture uniform: " + error);
+//            return;
+//        }
         glBindVertexArray(vaoId);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.out.println("ERROR after VAO bind: " + error);
-            return;
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.out.println("ERROR after VAO bind: " + error);
+//            return;
+//        }
 
         if (vaoId == 0) {
             System.out.println("ERROR: VAO ID is 0!");
@@ -405,10 +452,10 @@ public abstract class GUIComponent implements Renderable {
 
         glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
 
-        error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.out.println("ERROR after draw: " + error);
-        }
+//        error = glGetError();
+//        if (error != GL_NO_ERROR) {
+//            System.out.println("ERROR after draw: " + error);
+//        }
 
         glBindVertexArray(0);
         texture.unbind();
@@ -417,8 +464,24 @@ public abstract class GUIComponent implements Renderable {
 
     @Override
     public void cleanUp() {
+        rendering = false;
+
+        if (renderingThread != null) {
+            renderingThread.interrupt();
+            try {
+                renderingThread.join(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (renderingThread.isAlive()) {
+                System.err.println("WARNING: GUIComponent rendering thread did not terminate properly.");
+            }
+            renderingThread = null;
+        }
+        // NOW clean up OpenGL resources
         if (texture != null) {
             texture.cleanup();
+            texture = null;
         }
         if (shaderProgram != null) {
             shaderProgram.cleanup();
@@ -626,13 +689,24 @@ public abstract class GUIComponent implements Renderable {
         return print(widthPx,heightPx);
     }
     float scale = 1f;
-    protected BufferedImage prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
+    private BufferedImage prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
     public BufferedImage print(int width,int height){
         updateHitBox();
         if (prebufferedimage.getWidth()!=(int) (widthPx*scale) || prebufferedimage.getHeight()!=(int) (heightPx*scale)){
             prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
         }
         paintComponent(prebufferedimage.createGraphics());
+        return prebufferedimage;
+    }
+    public BufferedImage print(int width,int height,float resolution){
+        updateHitBox();
+        if (prebufferedimage.getWidth()!=(int) (widthPx*scale) || prebufferedimage.getHeight()!=(int) (heightPx*scale)){
+            prebufferedimage = new BufferedImage((int) (widthPx*scale*resolution), (int) (heightPx*scale*resolution),BufferedImage.TYPE_INT_ARGB);
+        }
+        Graphics g = prebufferedimage.createGraphics();
+        ((Graphics2D) g).scale(resolution,resolution);
+        paintComponent(g);
+        g.dispose();
         return prebufferedimage;
     }
 }

@@ -450,6 +450,7 @@ public class SnowMemo {
         catch (Exception e) {
             e.printStackTrace();
         }
+        System.out.println("QUIT!");
     }
     public Vector3f getWorldCoordinatesFromScreen(double xpos, double ypos) {
         // --- 1) Get window size (logical window coords) and framebuffer size (physical pixels)

@@ -362,7 +362,7 @@ public class FileChooser extends Window {
         for (FileChooserIcon fileChooserIcon:fileChooserIcons){
             fileChooserIcon.render();
         }
-        if (fps % 5 == 0) {
+        if (fps % 15 == 0) {
             for (FileChooserIcon f : fileChooserIcons) {
                 if (f.mesh != null) {
                     f.mesh.beginOcclusionQuery(camera);
@@ -612,6 +612,7 @@ public class FileChooser extends Window {
         }
         @Override
         public void render() {
+            if (Math.abs(mesh.getPosition().y-currentFileChooser.camera.getPosition().y)>2.9f) return;
             // Render the mesh
             if (mesh.isRenderVisible()) mesh.render(currentFileChooser.camera);
 
@@ -630,20 +631,12 @@ public class FileChooser extends Window {
             billboardGUI.setRotation(new Vector3f(0, (float) Math.PI, (float) Math.PI));
 
             // Choose a consistent base world size
-            float baseScale = 0.375f;
+            float baseScale = 0.15f;
 
             // Apply aspect-corrected scaling
-            billboardGUI.setScale(new Vector3f(baseScale * aspect, baseScale, baseScale));
-
-            // Render the billboard
-
-
-            long start = System.nanoTime();
+            billboardGUI.setScale(new Vector3f(baseScale * aspect, baseScale, baseScale-0.125f));
+            billboardGUI.setScale(billboardGUI.getScale().mul(0f));
             if (billboardGUI.isRenderVisible()) billboardGUI.render(currentFileChooser.camera);
-            long end = System.nanoTime();
-//            System.out.println("mesh.isRenderVisible() = " + mesh.isRenderVisible());
-//            System.out.println("billboardGUI.isRenderVisible() = " + billboardGUI.isRenderVisible());
-//            System.out.println("Billboard time: " + (end - start) / 1_000_000.0 + " ms");
         }
     }
 }
