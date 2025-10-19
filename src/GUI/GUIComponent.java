@@ -22,6 +22,9 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.swing.Timer;
 
 import static java.lang.Thread.sleep;
@@ -65,10 +68,16 @@ public abstract class GUIComponent implements Renderable {
     protected boolean visible = true;
     protected boolean mouseInside = false;
     Shape hitBox;
-    private volatile BufferedImage preRenderedImage;
-    private Thread renderingThread;
-    private final Object imageLock = new Object();
     private volatile boolean rendering = true;
+    private final Object imageLock = new Object();
+    private volatile BufferedImage preRenderedImage;
+    private final ScheduledExecutorService renderExecutor =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "GUIComponent-Renderer-" + hashCode());
+                t.setDaemon(true);
+                return t;
+            });
+
     public GUIComponent(Window window) {
         this(window, 0.1f, 0.1f);
     }
@@ -138,44 +147,31 @@ public abstract class GUIComponent implements Renderable {
             GUIComponents.get(window).put(hashCode(), this);
             hitBox = new Rectangle(xPx,yPx,widthPx,heightPx);
         }
-        renderingThread = new Thread(){
-            @Override
-            public void run(){
-                while(rendering) {
-                    int w, h;
-                    synchronized (imageLock) {  // Protect size reads
-                        w = widthPx;
-                        h = heightPx;
-                    }
-
-                    if (w <= 0 || h <= 0) {
-                        try {
-                            sleep(16);
-                            continue;
-                        } catch (InterruptedException e) {
-                            break;
-                        }
-                    }
-
-                    BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-                    Graphics g = tempImage.createGraphics();
-                    paintComponent(g);
-                    g.dispose();
-
-                    synchronized (imageLock) {
-                        preRenderedImage = tempImage;
-                    }
-
-                    try {
-                        sleep(16);
-                    } catch (InterruptedException e) {
-                        break;
-                    }
+        renderExecutor.scheduleAtFixedRate(() -> {
+            try {
+                int w, h;
+                synchronized (imageLock) {
+                    w = widthPx;
+                    h = heightPx;
                 }
+
+                if (w <= 0 || h <= 0) return;
+
+                BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = tempImage.createGraphics();
+                try {
+                    paintComponent(g);
+                } finally {
+                    g.dispose();
+                }
+
+                synchronized (imageLock) {
+                    preRenderedImage = tempImage;
+                }
+            } catch (Exception e) {
+                System.err.println("Rendering error: " + e.getMessage());
             }
-        };
-        renderingThread.setDaemon(true);
-        renderingThread.start();
+        }, 0, 16, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -261,7 +257,7 @@ public abstract class GUIComponent implements Renderable {
                                             try {
                                                 ((MouseClickCallBack) callBack).onEvent(mouseClickEvent);
                                             } catch (Exception e) {
-                                                System.err.println("Error in mouse click callback: " + e.getMessage());
+                                                e.printStackTrace();
                                             }
                                         }
                                     });
@@ -466,17 +462,13 @@ public abstract class GUIComponent implements Renderable {
     public void cleanUp() {
         rendering = false;
 
-        if (renderingThread != null) {
-            renderingThread.interrupt();
+        if (renderExecutor != null) {
+            renderExecutor.shutdownNow();
             try {
-                renderingThread.join(500);
+                renderExecutor.awaitTermination(50, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            if (renderingThread.isAlive()) {
-                System.err.println("WARNING: GUIComponent rendering thread did not terminate properly.");
-            }
-            renderingThread = null;
         }
         // NOW clean up OpenGL resources
         if (texture != null) {

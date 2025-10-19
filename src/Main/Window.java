@@ -114,6 +114,7 @@ public class Window {
                     c.invoke(windowHandle, xpos, ypos);
                 } catch (Exception e) {
                     System.err.println("Error in cursor position callback: " + e.getMessage());
+                    e.printStackTrace();
                 }
             });
         }));
@@ -125,6 +126,7 @@ public class Window {
                     callback.invoke(windowHandle, button, action, mods);
                 } catch (Exception e) {
                     System.err.println("Error in mouse button callback: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         });
@@ -134,6 +136,7 @@ public class Window {
                     callback.invoke(windowHandle, key, scancode, action, mods);
                 } catch (Exception e) {
                     System.err.println("Error in key callback: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         });
@@ -144,6 +147,7 @@ public class Window {
                     callback.invoke(windowHandle, codepoint);
                 } catch (Exception e) {
                     System.err.println("Error in char callback: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         });
@@ -158,6 +162,7 @@ public class Window {
                     callback.invoke(windowHandle, xoffset, yoffset);
                 } catch (Exception e) {
                     System.err.println("Error in scroll callback: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         });

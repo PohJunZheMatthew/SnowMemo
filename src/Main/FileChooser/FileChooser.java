@@ -340,47 +340,60 @@ public class FileChooser extends Window {
 
     public void render() {
         long oldContext = GLFW.glfwGetCurrentContext();
-        if (GLFW.glfwWindowShouldClose(oldContext)){
+        if (GLFW.glfwWindowShouldClose(oldContext)) {
             this.close();
             return;
         }
         GLFW.glfwMakeContextCurrent(this.window);
+
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         glFrontFace(GL_CCW);
+
         GLFW.glfwPollEvents();
-        glClearColor(SnowMemo.currentTheme.getMainColor().getRed(),
-                SnowMemo.currentTheme.getMainColor().getGreen(),
-                SnowMemo.currentTheme.getMainColor().getBlue(),
-                SnowMemo.currentTheme.getMainColor().getAlpha());
+
+        Color bg = SnowMemo.currentTheme.getMainColor();
+        glClearColor(bg.getRed() / 255f, bg.getGreen() / 255f,
+                bg.getBlue() / 255f, bg.getAlpha() / 255f);
 
         float aspectRatio = (float) width / height;
         projectionMatrix = new Matrix4f().perspective(45f, aspectRatio, Z_NEAR, Z_FAR);
 
         glClear(GL11.GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // 1. Render background first
         backgroundCube.render(camera);
-        for (FileChooserIcon fileChooserIcon:fileChooserIcons){
-            fileChooserIcon.render();
+
+        // 2. Update frustum culling for ALL objects
+        Frustum frustum = new Frustum();
+        Matrix4f projView = new Matrix4f(projectionMatrix).mul(camera.getViewMatrix());
+        frustum.update(projView);
+
+        for (FileChooserIcon f : fileChooserIcons) {
+            if (f.mesh != null) {
+                f.mesh.updateCulling(frustum);
+                f.billboardGUI.updateCulling(frustum);
+            }
         }
+
+        // 3. Start occlusion queries (only every 15 frames, only for potentially visible objects)
         if (fps % 15 == 0) {
             for (FileChooserIcon f : fileChooserIcons) {
-                if (f.mesh != null) {
+                if (f.mesh != null && f.mesh.isRenderVisible()) {
                     f.mesh.beginOcclusionQuery(camera);
                     f.billboardGUI.beginOcclusionQuery(camera);
                 }
             }
         }
-        Frustum frustum = new Frustum();
-        Matrix4f projView = new Matrix4f(projectionMatrix)
-                .mul(camera.getViewMatrix());
-        frustum.update(projView);
-        for (FileChooserIcon f : fileChooserIcons) {
-            if (f.mesh!=null) {
-                f.mesh.updateCulling(frustum);
-                f.billboardGUI.updateCulling(frustum);
-            }
+
+        // 4. Render the file icons
+        for (FileChooserIcon fileChooserIcon : fileChooserIcons) {
+            fileChooserIcon.render();
         }
+
+        // 5. Render GUI on top
         GUIComponent.renderGUIs(this);
+
         GLFW.glfwSwapBuffers(window);
         GLFW.glfwSwapInterval(1);
         GLFW.glfwMakeContextCurrent(oldContext);
@@ -414,7 +427,6 @@ public class FileChooser extends Window {
 
             File[] allFiles = Objects.requireNonNull(currentDirectory.listFiles());
             List<File> files = Arrays.stream(allFiles)
-                    .filter(File::isFile)
                     .sorted(Comparator.comparing(File::getName))
                     .toList();
 
@@ -423,19 +435,35 @@ public class FileChooser extends Window {
             int rows = 0;
             for (int i = 0; i < files.size(); i++)  {
                 File file = files.get(i);
-                FileIcon fileChooserIcon = new FileIcon(file);
+                if (file.isFile()) {
+                    FileIcon fileChooserIcon = new FileIcon(file);
 
-                int col = i % columns;
-                int row = i / columns;
+                    int col = i % columns;
+                    int row = i / columns;
 
-                float x = (col - (columns / 2f)) * spacing + 1.45f;
-                float y = -(row * spacing) + 1.5f;
-                float z = 1f;
+                    float x = (col - (columns / 2f)) * spacing + 1.45f;
+                    float y = -(row * spacing) + 1.5f;
+                    float z = 1f;
 
-                fileChooserIcon.mesh
-                        .setPosition(new Vector3f(x, y, z))
-                        .setScale(new Vector3f(0.375f, 0.375f, 0.375f)).setRotation(new Vector3f((float) 0, (float) Math.PI/2, (float) Math.PI));
-                fileChooserIcons.add(fileChooserIcon);
+                    fileChooserIcon.mesh
+                            .setPosition(new Vector3f(x, y, z))
+                            .setScale(new Vector3f(0.375f, 0.375f, 0.375f)).setRotation(new Vector3f((float) Math.PI, (float) Math.PI * 1.5f, (float) Math.PI));
+                    fileChooserIcons.add(fileChooserIcon);
+                } else if (file.isDirectory()) {
+                    FolderIcon fileChooserIcon = new FolderIcon(file);
+
+                    int col = i % columns;
+                    int row = i / columns;
+
+                    float x = (col - (columns / 2f)) * spacing + 1.45f;
+                    float y = -(row * spacing) + 1.5f;
+                    float z = 1f;
+
+                    fileChooserIcon.mesh
+                            .setPosition(new Vector3f(x, y, z))
+                            .setScale(new Vector3f(0.375f, 0.375f, 0.375f)).setRotation(new Vector3f((float) Math.PI, (float) Math.PI * 1.5f, (float) Math.PI));
+                    fileChooserIcons.add(fileChooserIcon);
+                }
                 rows++;
             }
             int actualRows = (files.size() + columns - 1) / columns; // Ceiling division
@@ -455,67 +483,83 @@ public class FileChooser extends Window {
         }
     }
     MouseClickCallBack cancelMouseClickCallback;
-    public File chooseFile(){
-        if (cancelMouseClickCallback!=null){
+    public File chooseFile() {
+        if (cancelMouseClickCallback != null) {
             cancelFileButton.removeCallBack(cancelMouseClickCallback);
         }
         fileNameTextField.setText("");
+
         final File[] returnFile = {null};
         final boolean[] running = {true};
+
         MouseClickCallBack mouseClickCallBack = _ -> {
-            returnFile[0] = new File(currentDirectory.getPath()+"/"+fileNameTextField.getText());
-            if (returnFile[0].exists()&&returnFile[0].isFile()) {
+            returnFile[0] = new File(currentDirectory.getPath() + "/" + fileNameTextField.getText());
+            if (returnFile[0].exists() && returnFile[0].isFile()) {
                 running[0] = false;
             }
         };
-        cancelMouseClickCallback = new MouseClickCallBack() {
-            @Override
-            public void onEvent(MouseClickEvent e) {
-                running[0] = false;
-                returnFile[0] = null;
-            }
+
+        cancelMouseClickCallback = e -> {
+            running[0] = false;
+            returnFile[0] = null;
         };
-        cancelFileButton.addCallBack( cancelMouseClickCallback);
+
+        cancelFileButton.addCallBack(cancelMouseClickCallback);
         chooseFileButton.addCallBack(mouseClickCallBack);
-        new Thread(()->{
+
+        // FPS counter thread
+        new Thread(() -> {
             while (running[0]) {
                 System.out.println("fps = " + fps);
                 fps = 0;
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                    break;
                 }
             }
         }).start();
+
         render();
         glfwShowWindow(window);
-        while (running[0]){
+
+        // Optimized render loop
+        while (running[0]) {
             update();
-            long start = System.nanoTime();
             render();
-            long end = System.nanoTime();
-//            System.out.println("Frame time: " + (end - start) / 1_000_000.0 + " ms");
-            if (GLFW.glfwWindowShouldClose(window)){
+
+            // Optional: Cap at 144 FPS to prevent CPU spinning
+            // Remove this block for unlimited FPS
+            try {
+                Thread.sleep(1);  // Small sleep to prevent 100% CPU usage
+            } catch (InterruptedException e) {
+                break;
+            }
+
+            if (GLFW.glfwWindowShouldClose(window)) {
                 running[0] = false;
                 break;
             }
         }
-        running[0] = false;long monitor = GLFW.glfwGetPrimaryMonitor();
-        if (monitor == 0L) throw new IllegalStateException("No primary monitor found");
-        GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
-        if (vidMode == null) throw new IllegalStateException("Failed to get video mode");
 
-        int w = vidMode.width() / 2;
-        int h = vidMode.height() / 2;
-        GLFW.glfwSetWindowSize(window,w,h);
+        running[0] = false;
+
+        // Reset window size
+        long monitor = GLFW.glfwGetPrimaryMonitor();
+        if (monitor != 0L) {
+            GLFWVidMode vidMode = GLFW.glfwGetVideoMode(monitor);
+            if (vidMode != null) {
+                int w = vidMode.width() / 2;
+                int h = vidMode.height() / 2;
+                GLFW.glfwSetWindowSize(window, w, h);
+            }
+        }
 
         GLFW.glfwHideWindow(window);
-        GLFW.glfwSetWindowShouldClose(window,false);
+        GLFW.glfwSetWindowShouldClose(window, false);
         chooseFileButton.removeCallBack(mouseClickCallBack);
         return returnFile[0];
     }
-
     public static FileChooser getCurrentFileChooser() {
         return currentFileChooser;
     }
@@ -543,6 +587,106 @@ public class FileChooser extends Window {
 
         }
         public abstract void render();
+    }
+    private static class FolderIcon extends FileChooserIcon{
+        final Mesh mesh;
+        final File file;
+        final BillboardGUI billboardGUI;
+        final GUIComponent guiComponent;
+        BufferedImage cachedImage;
+        public void createCachedImage(int width,int height){
+            cachedImage = new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);
+            Graphics g = cachedImage.createGraphics();
+            Graphics2D g2d = (Graphics2D) g.create();
+            // Enable alpha composite for transparency
+            g2d.setComposite(AlphaComposite.Clear);
+            g2d.fillRect(0, 0, cachedImage.getWidth(), cachedImage.getHeight());
+            g2d.setComposite(AlphaComposite.SrcOver);
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
+
+            Font basefont = SnowMemo.currentTheme.getFonts()[0].deriveFont(128f);
+            String text = file.getName();
+
+            // Auto-scale
+            float fontSize = basefont.getSize2D();
+            Font scaledFont = basefont.deriveFont(fontSize);
+            FontMetrics fm = g2d.getFontMetrics(scaledFont);
+
+            while ((fm.stringWidth(text) > cachedImage.getWidth() || fm.getHeight() > cachedImage.getHeight())
+                    && fontSize > 1) {
+                fontSize -= 0.5f;
+                scaledFont = basefont.deriveFont(fontSize);
+                fm = g2d.getFontMetrics(scaledFont);
+            }
+
+            g2d.setFont(scaledFont);
+
+            int textWidth = fm.stringWidth(text);
+            int x = (cachedImage.getWidth() - textWidth) / 2;
+            int y = (cachedImage.getHeight() / 2) + (fm.getAscent() - fm.getDescent()) / 2;
+            g2d.setColor(Color.BLACK);
+            g2d.drawString(text, x, y);
+
+            g2d.dispose();
+            g.dispose();
+        }
+        public FolderIcon(File file) {
+            this.mesh = Utils.loadObj(this.getClass().getResourceAsStream("Folder.obj"));
+            this.file = file;
+            this.mesh.setMaterial(new Mesh.Material(
+                    new Vector4f(245, 245, 250, 255),  // Diffuse - slightly off-white
+                    new Vector4f(220, 220, 225, 255),  // Ambient - very bright
+                    new Vector4f(255, 255, 255, 255),  // Specular - white highlights
+                    8f                                  // Shininess - low for matte paper
+            ));
+            // Create GUI component with transparent background
+            this.guiComponent = new GUIComponent(currentFileChooser, 0.05f, 0.05f) {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    if (cachedImage!=null&&widthPx==cachedImage.getWidth()&&heightPx==cachedImage.getHeight()){
+                        g.drawImage(cachedImage,0,0,null);
+                    }else{
+                        createCachedImage(widthPx,heightPx);
+                        g.drawImage(cachedImage,0,0,null);
+                    }
+                }
+
+                @Override
+                public void init() { }
+            };
+            // Create billboard - texture is created once here
+            billboardGUI = new BillboardGUI(currentFileChooser, guiComponent);
+            billboardGUI.setMaterial(new Mesh.Material(new Vector4f(255,255,255,255),new Vector4f(0,0,0,0),new Vector4f(0,0,0,0),32f));
+        }
+        @Override
+        public void render() {
+            if (Math.abs(mesh.getPosition().y-currentFileChooser.camera.getPosition().y)>2.9f) return;
+            // Render the mesh
+            if (mesh.isRenderVisible()) mesh.render(currentFileChooser.camera);
+
+            // ---- ASPECT-CORRECT BILLBOARD SETUP ----
+            // Get texture pixel dimensions
+            float texWidth = guiComponent.getWidthPx();
+            float texHeight = guiComponent.getHeightPx();
+            float aspect = texWidth / texHeight;
+
+            // Keep billboard positioned under the mesh
+            billboardGUI.setPosition(new Vector3f(
+                    mesh.getPosition().x - 0.025f,
+                    mesh.getPosition().y - 0.55f,
+                    mesh.getPosition().z
+            ));
+            billboardGUI.setRotation(new Vector3f(0, (float) Math.PI, (float) Math.PI));
+
+            // Choose a consistent base world size
+            float baseScale = 0.15f;
+
+            // Apply aspect-corrected scaling
+            billboardGUI.setScale(new Vector3f(baseScale * aspect, baseScale, baseScale-0.125f));
+            billboardGUI.setScale(billboardGUI.getScale().mul(0f));
+            if (billboardGUI.isRenderVisible()) billboardGUI.render(currentFileChooser.camera);
+        }
     }
     private static class FileIcon extends FileChooserIcon {
         final Mesh mesh;
@@ -590,7 +734,12 @@ public class FileChooser extends Window {
         public FileIcon(File file) {
             this.mesh = Utils.loadObj(this.getClass().getResourceAsStream("File.obj"));
             this.file = file;
-
+            this.mesh.setMaterial(new Mesh.Material(
+                    new Vector4f(245, 245, 250, 255),  // Diffuse - slightly off-white
+                    new Vector4f(220, 220, 225, 255),  // Ambient - very bright
+                    new Vector4f(255, 255, 255, 255),  // Specular - white highlights
+                    8f                                  // Shininess - low for matte paper
+            ));
             // Create GUI component with transparent background
             this.guiComponent = new GUIComponent(currentFileChooser, 0.05f, 0.05f) {
                 @Override
@@ -625,7 +774,7 @@ public class FileChooser extends Window {
             // Keep billboard positioned under the mesh
             billboardGUI.setPosition(new Vector3f(
                     mesh.getPosition().x - 0.025f,
-                    mesh.getPosition().y - 0.55f,
+                    mesh.getPosition().y - 0.6f,
                     mesh.getPosition().z
             ));
             billboardGUI.setRotation(new Vector3f(0, (float) Math.PI, (float) Math.PI));

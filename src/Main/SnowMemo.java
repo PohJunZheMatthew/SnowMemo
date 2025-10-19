@@ -53,10 +53,12 @@ public class SnowMemo {
     static FileChooser fileChooser;
     public static ShadowMap shadowMap;
     private static final Font quickSandFont;
+    private static final Font sanserifFont;
 
     static {
         try {
             quickSandFont = Font.createFont(Font.TRUETYPE_FONT,SnowMemo.class.getResourceAsStream("QuicksandFont/Quicksand-VariableFont_wght.ttf"));
+            sanserifFont = new Font("SansSerif",Font.PLAIN,12);
         } catch (FontFormatException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
@@ -79,7 +81,7 @@ public class SnowMemo {
             Color.WHITE,
             new Color[]{ Color.BLACK, Color.LIGHT_GRAY, Color.DARK_GRAY },
             new Color[]{ Color.BLACK } ,
-            new Font[]{quickSandFont}
+            new Font[]{sanserifFont}
     );
 
     public static Theme currentTheme = whiteTheme;

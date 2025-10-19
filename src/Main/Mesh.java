@@ -643,23 +643,55 @@ public class Mesh implements Renderable {
         return this;
     }
     public Vector3f getMin() {
-        Vector3f min = new Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE);
-        for (int i = 0; i < vertices.length; i += 8) {
-            min.x = Math.min(min.x, vertices[i]);
-            min.y = Math.min(min.y, vertices[i + 1]);
-            min.z = Math.min(min.z, vertices[i + 2]);
+        if (vertices == null || vertices.length < 3) {
+            return new Vector3f(); // fallback to (0,0,0) if no vertex data
         }
-        // Apply world transform
-        return modelMatrix.transformPosition(min);
-    }
 
-    public Vector3f getMax() {
-        Vector3f max = new Vector3f(Float.MIN_VALUE, Float.MIN_VALUE, Float.MIN_VALUE);
-        for (int i = 0; i < vertices.length; i += 8) {
-            max.x = Math.max(max.x, vertices[i]);
-            max.y = Math.max(max.y, vertices[i + 1]);
-            max.z = Math.max(max.z, vertices[i + 2]);
+        Vector3f min = new Vector3f(Float.MAX_VALUE, Float.MAX_VALUE, Float.MAX_VALUE);
+
+        // Use a safe loop stride — only process complete vertex triplets
+        // (x, y, z). Assuming layout: [x,y,z,nx,ny,nz,u,v] → stride = 8
+        // but we'll guard against shorter buffers.
+        int stride = 8;
+        for (int i = 0; i + 2 < vertices.length; i += stride) {
+            float x = vertices[i];
+            float y = vertices[i + 1];
+            float z = vertices[i + 2];
+
+            if (x < min.x) min.x = x;
+            if (y < min.y) min.y = y;
+            if (z < min.z) min.z = z;
         }
-        return modelMatrix.transformPosition(max);
+
+        // Apply world transform without mutating the original min vector
+        Vector3f transformedMin = new Vector3f();
+        modelMatrix.transformPosition(min, transformedMin);
+
+        return transformedMin;
+    }public Vector3f getMax() {
+        if (vertices == null || vertices.length < 3) {
+            return new Vector3f(); // fallback (0,0,0)
+        }
+
+        Vector3f max = new Vector3f(-Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE);
+
+        // Assuming vertex layout: [x, y, z, nx, ny, nz, u, v] → stride = 8
+        // but guard against shorter vertex arrays
+        int stride = 8;
+        for (int i = 0; i + 2 < vertices.length; i += stride) {
+            float x = vertices[i];
+            float y = vertices[i + 1];
+            float z = vertices[i + 2];
+
+            if (x > max.x) max.x = x;
+            if (y > max.y) max.y = y;
+            if (z > max.z) max.z = z;
+        }
+
+        // Apply world transform safely (do not mutate max directly)
+        Vector3f transformedMax = new Vector3f();
+        modelMatrix.transformPosition(max, transformedMax);
+
+        return transformedMax;
     }
 }
