@@ -246,7 +246,7 @@ public class ShadowMap {
         private final int height;
 
         public ShadowTexture(int width, int height, int pixelFormat) throws Exception {
-            super(glGenTextures(),true);
+            super(width,height,glGenTextures(),true);
             this.width = width;
             this.height = height;
 

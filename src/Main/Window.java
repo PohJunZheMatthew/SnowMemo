@@ -190,8 +190,6 @@ public class Window {
         GL11.glViewport(0, 0, width, height);
         float aspectRatio1 = (float) width / height;
         projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio1, Z_NEAR, Z_FAR);
-        int id = GL30.glGenQueries();
-        GL30.glBeginQuery(GL15.GL_SAMPLES_PASSED,id);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         Frustum frustum = new Frustum();
         Matrix4f projView = new Matrix4f(projectionMatrix)
@@ -207,13 +205,17 @@ public class Window {
                 mesh.beginOcclusionQuery(camera);
             }
         }
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDepthMask(true);        // allow writes
+        glDisable(GL_BLEND);      // ensure blending isn't on
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
         for (Renderable m:meshes) {
             if (m instanceof Mesh) ((Mesh) m).render(camera); else m.render();
         }
         GUIComponent.renderGUIs(this);
-        GL30.glEndQuery(id);
-        int result = GL30.glGetQueryObjecti(id,GL15.GL_QUERY_RESULT);
-        GL30.glDeleteQueries(id);
         GLFW.glfwSwapBuffers(window);
     }
 

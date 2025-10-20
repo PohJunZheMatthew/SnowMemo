@@ -9,6 +9,7 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.system.MemoryUtil.memFree;
 
+import aurelienribon.tweenengine.TweenAccessor;
 import jdk.jfr.Name;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -23,7 +24,7 @@ public class Mesh implements Renderable {
     protected boolean visible = true;
     protected boolean renderVisible = true;
     private boolean queryPending = false;
-    protected boolean outline = true;
+    public boolean outline = true;
     protected final int vaoId;
     protected final int vboId;
     protected final int idxVboId;
@@ -324,7 +325,6 @@ public class Mesh implements Renderable {
         if (!renderVisible) return;
         if (!visible) return;
         GL11.glLineWidth(1);
-
         // Ensure all required uniforms exist
         try {
             if (!shaderProgram.hasUniform("useTextures")) {
@@ -403,24 +403,33 @@ public class Mesh implements Renderable {
         // Handle transparency if texture has alpha
         // ==========================
         boolean hasTransparency = (texture != null && texture.hasAlpha());
-
-        if (hasTransparency) {
-            // Enable blending for transparency
-            GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            // Keep depth testing but disable depth writing for transparent objects
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthMask(false);
-            // Disable backface culling for transparency (optional - depends on your needs)
-            GL11.glDisable(GL11.GL_CULL_FACE);
-        } else {
+        if (texture!=null) {
+            if (hasTransparency) {
+                // Enable blending for transparency
+                GL11.glEnable(GL11.GL_BLEND);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                // Keep depth testing but disable depth writing for transparent objects
+                GL11.glEnable(GL11.GL_DEPTH_TEST);
+                GL11.glDepthMask(true);
+                // Disable backface culling for transparency (optional - depends on your needs)
+                GL11.glDisable(GL11.GL_CULL_FACE);
+            } else {
+                // Enable blending for transparency
+                GL11.glEnable(GL11.GL_BLEND);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                // Keep depth testing but disable depth writing for transparent objects
+                GL11.glEnable(GL11.GL_DEPTH_TEST);
+                GL11.glDepthMask(true);
+                // Disable backface culling for transparency (optional - depends on your needs)
+                GL11.glDisable(GL11.GL_CULL_FACE);
+            }
+        }else{
             // Opaque rendering
             GL11.glDisable(GL11.GL_BLEND);
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glDepthMask(true);
             GL11.glEnable(GL11.GL_CULL_FACE);
         }
-
         // ==========================
         // 1. Render outline (only for opaque objects)
         // ==========================
@@ -437,6 +446,8 @@ public class Mesh implements Renderable {
         // ==========================
         // 2. Render mesh normally
         // ==========================
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
         shaderProgram.setUniform("modelMatrix", modelMatrix);
         shaderProgram.setUniform("useLighting", 1);
         shaderProgram.setUniform("overrideColor", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
@@ -616,18 +627,69 @@ public class Mesh implements Renderable {
         queryPending = true;
     }
     public void updateCulling(Frustum frustum) {
-        if (!queryPending) return;
+        // === Step 1: Update model matrix (local → world)
+        modelMatrix.identity()
+                .translate(position)
+                .rotateXYZ(rotation)
+                .scale(scale);
 
-        modelMatrix.identity().translate(position).rotateXYZ(rotation).scale(scale);
+        // === Step 2: Compute world-space AABB
+        Vector3f localMin = new Vector3f(Float.MAX_VALUE);
+        Vector3f localMax = new Vector3f(-Float.MAX_VALUE);
 
-        Vector3f min = getMin();
-        Vector3f max = getMax();
+        int stride = 8; // assume layout: x, y, z, nx, ny, nz, u, v
+        for (int i = 0; i + 2 < vertices.length; i += stride) {
+            float x = vertices[i];
+            float y = vertices[i + 1];
+            float z = vertices[i + 2];
 
-        int available = glGetQueryObjecti(queryId, GL_QUERY_RESULT_AVAILABLE);
-        if (available != 0) {
-            int samples = glGetQueryObjecti(queryId, GL_QUERY_RESULT);
-            renderVisible = frustum.isBoxInFrustum(min, max);
-            queryPending = false;
+            if (x < localMin.x) localMin.x = x;
+            if (y < localMin.y) localMin.y = y;
+            if (z < localMin.z) localMin.z = z;
+            if (x > localMax.x) localMax.x = x;
+            if (y > localMax.y) localMax.y = y;
+            if (z > localMax.z) localMax.z = z;
+        }
+
+        // Transform 8 corners into world space and recompute final AABB
+        Vector3f worldMin = new Vector3f(Float.MAX_VALUE);
+        Vector3f worldMax = new Vector3f(-Float.MAX_VALUE);
+
+        for (int i = 0; i < 8; i++) {
+            float x = (i & 1) == 0 ? localMin.x : localMax.x;
+            float y = (i & 2) == 0 ? localMin.y : localMax.y;
+            float z = (i & 4) == 0 ? localMin.z : localMax.z;
+
+            Vector3f corner = new Vector3f(x, y, z);
+            modelMatrix.transformPosition(corner);
+
+            if (corner.x < worldMin.x) worldMin.x = corner.x;
+            if (corner.y < worldMin.y) worldMin.y = corner.y;
+            if (corner.z < worldMin.z) worldMin.z = corner.z;
+            if (corner.x > worldMax.x) worldMax.x = corner.x;
+            if (corner.y > worldMax.y) worldMax.y = corner.y;
+            if (corner.z > worldMax.z) worldMax.z = corner.z;
+        }
+
+        // === Step 3: Frustum culling test
+        if (!frustum.isBoxInFrustum(worldMin, worldMax)) {
+            renderVisible = false;
+            return; // no need to check occlusion
+        }
+
+        // === Step 4: Occlusion query result check
+        if (queryPending) {
+            int available = glGetQueryObjecti(queryId, GL_QUERY_RESULT_AVAILABLE);
+            if (available != 0) {
+                int samples = glGetQueryObjecti(queryId, GL_QUERY_RESULT);
+                renderVisible = samples != 0;
+                queryPending = false;
+            }
+        }
+
+        // === Step 5: If no query pending, we assume visible until proven otherwise
+        if (!queryPending) {
+            renderVisible = true;
         }
     }
     public boolean isRenderVisible() {

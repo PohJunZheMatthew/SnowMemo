@@ -16,8 +16,10 @@ import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 public class Texture {
     private final int textureId;
     private final boolean hasAlpha;
-
-    protected Texture(int textureId, boolean hasAlpha) {
+    private final int width,height;
+    protected Texture(int width,int height,int textureId, boolean hasAlpha) {
+        this.width = width;
+        this.height = height;
         this.textureId = textureId;
         this.hasAlpha = hasAlpha;
     }
@@ -96,7 +98,7 @@ public class Texture {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
         // Stronger bias for sharper mipmaps
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -1.0f);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -3f);
 
         // Anisotropic filtering (force maximum quality)
         if (GL.getCapabilities().GL_EXT_texture_filter_anisotropic) {
@@ -117,7 +119,7 @@ public class Texture {
         // Unbind for safety
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        return new Texture(texId, hasAlpha);
+        return new Texture(image.getWidth(),image.getHeight(),texId, hasAlpha);
     }
 
     private static byte[] getRGBA(BufferedImage image, boolean flipY) {
@@ -139,5 +141,13 @@ public class Texture {
             }
         }
         return data;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public int getHeight() {
+        return height;
     }
 }

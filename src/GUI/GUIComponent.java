@@ -68,6 +68,7 @@ public abstract class GUIComponent implements Renderable {
     protected boolean visible = true;
     protected boolean mouseInside = false;
     Shape hitBox;
+    protected boolean threadRendering = true;
     private volatile boolean rendering = true;
     private final Object imageLock = new Object();
     private volatile BufferedImage preRenderedImage;
@@ -149,26 +150,31 @@ public abstract class GUIComponent implements Renderable {
         }
         renderExecutor.scheduleAtFixedRate(() -> {
             try {
-                int w, h;
-                synchronized (imageLock) {
-                    w = widthPx;
-                    h = heightPx;
-                }
+                if (threadRendering) {
+                    int w, h;
+                    synchronized (imageLock) {
+                        w = widthPx;
+                        h = heightPx;
+                    }
 
-                if (w <= 0 || h <= 0) return;
+                    if (w <= 0 || h <= 0) return;
 
-                BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = tempImage.createGraphics();
-                try {
-                    paintComponent(g);
-                } finally {
-                    g.dispose();
-                }
+                    BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g = tempImage.createGraphics();
+                    try {
+                        paintComponent(g);
+                    } finally {
+                        g.dispose();
+                    }
 
-                synchronized (imageLock) {
-                    preRenderedImage = tempImage;
+                    synchronized (imageLock) {
+                        preRenderedImage = tempImage;
+                    }
+                }else{
+                    preRenderedImage = null;
                 }
             } catch (Exception e) {
+                e.printStackTrace();
                 System.err.println("Rendering error: " + e.getMessage());
             }
         }, 0, 16, TimeUnit.MILLISECONDS);

@@ -329,22 +329,25 @@ public class ScrollableFrame extends GUIComponent {
         if (getChildren() == null) return;
         int contentAreaWidth = getWidthPx();
         int contentAreaHeight = getHeightPx();
-        for (GUIComponent child : getChildren()) {
-            if (child != null && child.isVisible()) {
-                int childWidth = (int)(child.getWidth() * contentAreaWidth);
-                int childHeight = (int)(child.getHeight() * contentAreaHeight);
-                int childX = (int)(child.getX() * contentAreaWidth);
-                int childY = (int)(child.getY() * contentAreaHeight);
+        synchronized (getChildren()) {
+            for (GUIComponent child : getChildren()) {
+                if (child != null && child.isVisible()) {
+                    child.threadRendering = false;
+                    int childWidth = (int) (child.getWidth() * contentAreaWidth);
+                    int childHeight = (int) (child.getHeight() * contentAreaHeight);
+                    int childX = (int) (child.getX() * contentAreaWidth);
+                    int childY = (int) (child.getY() * contentAreaHeight);
 
-                if (childY + childHeight < scrollY || childY > scrollY + getViewportHeight()) continue;
-                if (childX + childWidth < scrollX || childX > scrollX + getViewportWidth()) continue;
+                    if (childY + childHeight < scrollY || childY > scrollY + getViewportHeight()) continue;
+                    if (childX + childWidth < scrollX || childX > scrollX + getViewportWidth()) continue;
 
-                Graphics2D childGraphics = (Graphics2D) g2.create();
-                childGraphics.translate(childX, childY);
-                child.widthPx = (int) (this.widthPx * child.width);
-                child.heightPx = (int) (this.heightPx * child.height);
-                child.paintComponent(childGraphics);
-                childGraphics.dispose();
+                    Graphics2D childGraphics = (Graphics2D) g2.create();
+                    childGraphics.translate(childX, childY);
+                    child.widthPx = (int) (this.widthPx * child.width);
+                    child.heightPx = (int) (this.heightPx * child.height);
+                    child.paintComponent(childGraphics);
+                    childGraphics.dispose();
+                }
             }
         }
     }
@@ -628,7 +631,7 @@ public class ScrollableFrame extends GUIComponent {
         child.CustomMouseEvents = true;
         nextChildY += child.getHeight();
         super.addChild(child);
-
+        child.threadRendering = false;
         if (autoUpdateContent) {
             updateContentSize();
             updateScrollbarVisibility();
@@ -648,6 +651,7 @@ public class ScrollableFrame extends GUIComponent {
 
     @Override
     public void render() {
+        threadRendering = false;
         if (!visible) return;
         if (parent != null) {
             widthPx  = (int) (parent.getWidthPx() * width);

@@ -13,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 
 public class BillboardGUI extends Mesh {
@@ -22,23 +23,23 @@ public class BillboardGUI extends Mesh {
             0.5f,  0.5f, 0.0f,    0.0f, 0.0f, 1.0f,    1.0f, 0.0f,
             -0.5f,  0.5f, 0.0f,    0.0f, 0.0f, 1.0f,    0.0f, 0.0f
     };
-
     private static final int[] indices = {0, 1, 2, 2, 3, 0};
 
     public GUIComponent mainGUIComponent;
     private int textureWidth = 512;
     private int textureHeight = 512;
+    private int currentTextureWidth = 512;
+    private int currentTextureHeight = 512;
     private boolean needsUpdate = true;
-    private long lastUpdateTime = 0;
-    private static final long UPDATE_INTERVAL_MS = 16;
     private float aspectRatio = 1f;
-    private final int MAX_TEXTURE_SIZE = 1024;
+    private final int MAX_TEXTURE_SIZE = 4096;  // Increased for better quality
     private float resolution = 1f;
+    private final float SUPERSAMPLE = 2.0f;  // Render at 2x for crisp text
+
     public BillboardGUI(Window currentWindow, GUIComponent mainGuiComponent) {
         super(vertices, indices, currentWindow, createInitialTexture(mainGuiComponent, 512, 512));
         this.mainGUIComponent = mainGuiComponent;
-        mainGUIComponent.setVisible(false);
-
+        mainGuiComponent.setVisible(false);
         this.outline = false;
         this.material = new Material(
                 new Vector4f(1, 1, 1, 1),
@@ -46,7 +47,6 @@ public class BillboardGUI extends Mesh {
                 new Vector4f(0, 0, 0, 1),
                 1.0f
         );
-
         updateAspectRatio();
         updateScale();
     }
@@ -74,14 +74,17 @@ public class BillboardGUI extends Mesh {
     }
 
     private void updateTextureData() {
-        long currentTime = System.currentTimeMillis();
-        if (!needsUpdate || (currentTime - lastUpdateTime) < UPDATE_INTERVAL_MS) return;
+        if (!needsUpdate) return;
 
-        BufferedImage image = mainGUIComponent.print(textureWidth, textureHeight,resolution);
+        BufferedImage image = mainGUIComponent.print(textureWidth, textureHeight, resolution);
         if (image == null) return;
 
         int width = image.getWidth();
         int height = image.getHeight();
+        
+        // Check if texture size changed using our tracking variables
+        boolean sizeChanged = (currentTextureWidth != width || currentTextureHeight != height);
+
         int[] pixels = new int[width * height];
         image.getRGB(0, 0, width, height, pixels, 0, width);
 
@@ -103,11 +106,27 @@ public class BillboardGUI extends Mesh {
 
         texture.bind();
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+
+        if (sizeChanged) {
+            // Recreate the texture with new size
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            // Update tracking variables
+            currentTextureWidth = width;
+            currentTextureHeight = height;
+        } else {
+            // Just update existing texture
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+        }
+
+        glGenerateMipmap(GL_TEXTURE_2D);
         texture.unbind();
 
         needsUpdate = false;
-        lastUpdateTime = currentTime;
     }
 
     private Vector2f projectToScreen(Vector3f worldPos, Camera camera, Matrix4f projectionMatrix, int screenWidth, int screenHeight) {
@@ -143,25 +162,21 @@ public class BillboardGUI extends Mesh {
         float pixelWidth = Math.abs(topRightScreen.x - topLeftScreen.x);
         float pixelHeight = Math.abs(bottomLeftScreen.y - topLeftScreen.y);
 
-        float widthPercentage = Math.max(0.01f, Math.min(1f, pixelWidth / screenWidth));
-        float heightPercentage = Math.max(0.01f, Math.min(1f, pixelHeight / screenHeight));
+        // Apply supersampling for crisp text
+        int targetWidth = Math.round(pixelWidth * SUPERSAMPLE);
+        int targetHeight = Math.round(pixelHeight * SUPERSAMPLE);
 
-        float currentWidth = mainGUIComponent.getWidth();
-        float currentHeight = mainGUIComponent.getHeight();
+        // Clamp to reasonable bounds
+        targetWidth = Math.max(256, Math.min(MAX_TEXTURE_SIZE, targetWidth));
+        targetHeight = Math.max(256, Math.min(MAX_TEXTURE_SIZE, targetHeight));
 
-        if (Math.abs(currentWidth - widthPercentage) > 0.01f || Math.abs(currentHeight - heightPercentage) > 0.01f) {
-            mainGUIComponent.setWidth(widthPercentage * 1.5f);
-            mainGUIComponent.setHeight(heightPercentage * 1.5f);
+        // Only update if significantly different (avoid constant regeneration)
+        int threshold = 100; // pixels
+        if (Math.abs(currentTextureWidth - targetWidth) > threshold ||
+                Math.abs(currentTextureHeight - targetHeight) > threshold) {
 
-            float maxDim = MAX_TEXTURE_SIZE;
-            if (aspectRatio >= 1f) {
-                textureWidth = (int) maxDim;
-                textureHeight = Math.round(maxDim / aspectRatio);
-            } else {
-                textureHeight = (int) maxDim;
-                textureWidth = Math.round(maxDim * aspectRatio);
-            }
-
+            textureWidth = targetWidth;
+            textureHeight = targetHeight;
             markDirty();
         }
     }
