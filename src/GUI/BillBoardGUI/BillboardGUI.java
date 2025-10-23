@@ -9,6 +9,7 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 
@@ -26,15 +27,15 @@ public class BillboardGUI extends Mesh {
     private static final int[] indices = {0, 1, 2, 2, 3, 0};
 
     public GUIComponent mainGUIComponent;
-    private int textureWidth = 512;
-    private int textureHeight = 512;
-    private int currentTextureWidth = 512;
-    private int currentTextureHeight = 512;
+    private int textureWidth = 256;
+    private int textureHeight = 256;
+    private int currentTextureWidth = 128;
+    private int currentTextureHeight = 128;
     private boolean needsUpdate = true;
     private float aspectRatio = 1f;
-    private final int MAX_TEXTURE_SIZE = 4096;  // Increased for better quality
+    private final int MAX_TEXTURE_SIZE = 256;  // Increased for better quality
     private float resolution = 1f;
-    private final float SUPERSAMPLE = 2.0f;  // Render at 2x for crisp text
+    private final float SUPERSAMPLE = 1.0f;  // Render at 2x for crisp text
 
     public BillboardGUI(Window currentWindow, GUIComponent mainGuiComponent) {
         super(vertices, indices, currentWindow, createInitialTexture(mainGuiComponent, 512, 512));
@@ -74,6 +75,7 @@ public class BillboardGUI extends Mesh {
     }
 
     private void updateTextureData() {
+        System.out.println("new Dimension(textureWidth,textureHeight) = " + new Dimension(textureWidth, textureHeight));
         if (!needsUpdate) return;
 
         BufferedImage image = mainGUIComponent.print(textureWidth, textureHeight, resolution);

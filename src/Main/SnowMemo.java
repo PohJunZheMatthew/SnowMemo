@@ -114,10 +114,10 @@ public class SnowMemo {
         }
 //        renderable.add(new Mesh(Mesh.CUBE_POS_UV,Mesh.CUBE_INDICES,window,Texture.loadTexture(this.getClass().getResourceAsStream("2025-03-29T10:45:07.749198.png"))));
         renderable.add(new Baseplate().setVisible(true));
-        mesh = Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"));
-        renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj")));
-        renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj")).setPosition(new Vector3f(2f,0f,0f)));
-        renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj")).setPosition(new Vector3f(4f,0f,0f)));
+        mesh = Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class);
+        renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class));
+        renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class).setPosition(new Vector3f(2f,0f,0f)));
+        renderable.add(Utils.loadObj(this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class).setPosition(new Vector3f(4f,0f,0f)));
         renderable.add(mesh);
         backButton = new GUIComponent(window,0.01f, 0.01f, 0.1f, 0.05f) {
             @Override

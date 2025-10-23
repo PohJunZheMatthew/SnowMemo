@@ -38,7 +38,6 @@ public class FileChooser extends Window {
     @SuppressWarnings("FieldCanBeLocal")
     private GUIComponent chooseFileButton, chooseFileFrame, cancelFileButton;
     private TextField fileNameTextField;
-    @SuppressWarnings("FieldMayBeFinal")
     private File currentDirectory = new File(System.getProperty("user.home")),previousDirectory = new File("");
     @SuppressWarnings("FieldCanBeLocal")
     private ScrollableFrame suggestionsFrame, folderFrame;
@@ -53,11 +52,12 @@ public class FileChooser extends Window {
     static int MAX_SCROLL = 10;
     static final int MIN_SCROLL = 1;
     private final float[] originalBackgroundCubeVerts;
-    private int selection = -1;
+    private int selection = 0;
     private Mesh selectionMesh;
     private TweenManager tweenManager;
     long lastUpdate = System.nanoTime();
     private FileFilter fileFilter;
+    private FileHistory fileHistory = new FileHistory();
     public FileChooser() {
         long monitor = GLFW.glfwGetPrimaryMonitor();
         if (monitor == 0L) throw new IllegalStateException("No primary monitor found");
@@ -183,7 +183,7 @@ public class FileChooser extends Window {
         });
 
         GLFW.glfwMakeContextCurrent(oldContext);
-        backgroundCube = Utils.loadObj(SnowMemo.class.getResourceAsStream("Cube.obj"))
+        backgroundCube = Utils.loadObj(SnowMemo.class.getResourceAsStream("Cube.obj"), FileChooser.class)
                 .setScale(new Vector3f(1,3f,3f)).setPosition(new Vector3f(1.25f,-2f,0f));
         backgroundCube.outline = false;
         originalBackgroundCubeVerts = backgroundCube.getVertices();
@@ -204,12 +204,14 @@ public class FileChooser extends Window {
             public void invoke(long window, int button, int action, int mods) {
                 if (button==GLFW_MOUSE_BUTTON_1){
                     if (action==GLFW_PRESS){
-                        FileChooserIcon fileChooserIcon = fileChooserIcons.get(selection);
-                        File file = fileChooserIcon.file;
-                        if (file.isFile()){
-                            fileNameTextField.setText(file.getName());
-                        } else if (file.isDirectory()) {
-                            currentDirectory = new File(file.getPath());
+                        if (selection >= 0 && selection < fileChooserIcons.size()) {
+                            FileChooserIcon fi = fileChooserIcons.get(selection);
+                            File file = fi.file;
+                            if (file.isFile()){
+                                fileNameTextField.setText(file.getName());
+                            } else if (file.isDirectory()) {
+                                currentDirectory = new File(file.getPath());
+                            }
                         }
                     }
                 }
@@ -392,10 +394,17 @@ public class FileChooser extends Window {
         };
         selectionMesh = Utils.loadObj(getClass().getResourceAsStream("FileSelector.obj"));
         selectionMesh.init();
-        selectionMesh.setPosition(new Vector3f(-10,0,0.1f));
+        selectionMesh.setPosition(new Vector3f(0,0,1.1f));
+    }
+    public void resetCamera() {
+        if (camera != null) {
+            camera.setPosition(new Vector3f(0f, 0f, 5f));
+            camera.setRotation(new Vector3f(0f, 0f, 0f));
+            scroll = MIN_SCROLL;
+            perScroll = 1.0f;
+        }
     }
     Vector3f lastSelectorPos = new Vector3f();
-
     public void updateSelectorPosition(Vector3f newPos) {
         if (!newPos.equals(lastSelectorPos)) {
             setSelectorPosition(newPos);
@@ -486,11 +495,13 @@ public class FileChooser extends Window {
             mouseWheelVelocity = 0;
         }
         if (!previousDirectory.getAbsolutePath().equals(currentDirectory.getAbsolutePath())) {
+            resetCamera();
+            fileHistory.add(fileHistory.size(), currentDirectory);
             scroll = MIN_SCROLL;
 
             selection = 0;
-            for (FileChooserIcon icon:fileChooserIcons){
-                if (icon.mesh!=null) {
+            for (FileChooserIcon icon : fileChooserIcons) {
+                if (icon.mesh != null) {
                     icon.mesh.cleanUp();
                     icon.billboardGUI.cleanUp();
                 }
@@ -505,48 +516,48 @@ public class FileChooser extends Window {
             int columns = 4;
             float spacing = 1.25f;
             int rows = 0;
-            int visibleIndex = 0; // Track only non-hidden files
+            int visibleIndex = 0;
+            if (currentDirectory.getParent()!=null) {
+                ReturnFolderIcon returnFolderIcon = new ReturnFolderIcon(new File(currentDirectory.getParent()));
+                int col = visibleIndex % columns;
+                int row = visibleIndex / columns;
+                float x = (col - (columns / 2f)) * spacing + 1.45f;
+                float y = -(row * spacing) + 1.5f;
+                float z = 1f;
+                returnFolderIcon.mesh
+                        .setPosition(new Vector3f(x, y, z))
+                        .setScale(new Vector3f(0.375f, 0.375f, 0.375f))
+                        .setRotation(new Vector3f(0, (float) Math.PI * 1.5f, 0));
+                fileChooserIcons.add(returnFolderIcon);
+                visibleIndex++;
+            }
             for (File file : files) {
                 if (!file.isHidden()) {
+                    FileChooserIcon fileChooserIcon;
                     if (file.isFile()) {
-                        FileIcon fileChooserIcon = new FileIcon(file);
-
-                        int col = visibleIndex % columns;
-                        int row = visibleIndex / columns;
-
-                        float x = (col - (columns / 2f)) * spacing + 1.45f;
-                        float y = -(row * spacing) + 1.5f;
-                        float z = 1f;
-
-                        fileChooserIcon.mesh
-                                .setPosition(new Vector3f(x, y, z))
-                                .setScale(new Vector3f(0.375f, 0.375f, 0.375f))
-                                .setRotation(new Vector3f(0, (float) Math.PI * 1.5f, 0)); // Removed π rotation
-                        fileChooserIcons.add(fileChooserIcon);
-                    } else if (file.isDirectory()) {
-                        FolderIcon fileChooserIcon = new FolderIcon(file);
-
-                        int col = visibleIndex % columns;
-                        int row = visibleIndex / columns;
-
-                        float x = (col - (columns / 2f)) * spacing + 1.45f;
-                        float y = -(row * spacing) + 1.5f;
-                        float z = 1f;
-
-                        fileChooserIcon.mesh
-                                .setPosition(new Vector3f(x, y, z))
-                                .setScale(new Vector3f(0.375f, 0.375f, 0.375f))
-                                .setRotation(new Vector3f(0, (float) Math.PI * 1.5f, 0)); // Removed π rotation
-                        fileChooserIcons.add(fileChooserIcon);
+                        fileChooserIcon = new FileIcon(file);
+                    } else {
+                        fileChooserIcon = new FolderIcon(file);
                     }
-                    visibleIndex++; // Only increment for visible files
+
+                    int col = visibleIndex % columns;
+                    int row = visibleIndex / columns;
+                    float x = (col - (columns / 2f)) * spacing + 1.45f;
+                    float y = -(row * spacing) + 1.5f;
+                    float z = 1f;
+                    fileChooserIcon.mesh
+                            .setPosition(new Vector3f(x, y, z))
+                            .setScale(new Vector3f(0.375f, 0.375f, 0.375f))
+                            .setRotation(new Vector3f(0, (float) Math.PI * 1.5f, 0));
+                    fileChooserIcons.add(fileChooserIcon);
+                    visibleIndex++;
                 }
             }
+
             rows = (visibleIndex + columns - 1) / columns;
-            int actualRows = rows; // Use the actual visible rows, not total files
+            int actualRows = rows;
             MAX_SCROLL = Math.max(MIN_SCROLL, (int) (Math.max(0, actualRows - 3) * 1.5f) + 1);
             float lowerOffset = spacing * Math.max(0, actualRows - 4) / 3;
-            System.out.println("Lower offset: " + lowerOffset + " (rows: " + actualRows + ", MAX_SCROLL: " + MAX_SCROLL + ")");
             float[] verts = originalBackgroundCubeVerts.clone();
             for (int i = 0; i < verts.length; i += 6) {
                 float y = verts[i + 1];
@@ -731,14 +742,14 @@ public class FileChooser extends Window {
         protected final GUIComponent guiComponent;
 
         public FileChooserIcon(File file, String meshPath) {
-            this.mesh = Utils.loadObj(this.getClass().getResourceAsStream(meshPath));
+            this.mesh = Utils.loadObj(this.getClass().getResourceAsStream(meshPath), FileChooser.class);
             this.file = file;
-            this.mesh.setMaterial(new Mesh.Material(
-                    new Vector4f(245, 245, 250, 255),
-                    new Vector4f(220, 220, 225, 255),
-                    new Vector4f(255, 255, 255, 255),
-                    8f
-            ));
+//            this.mesh.setMaterial(new Mesh.Material(
+//                    new Vector4f(245, 245, 250, 255),
+//                    new Vector4f(220, 220, 225, 255),
+//                    new Vector4f(255, 255, 255, 255),
+//                    8f
+//            ));
 
             this.guiComponent = new GUIComponent(currentFileChooser, 0.1f, 0.1f) {
                 @Override
@@ -914,13 +925,66 @@ public class FileChooser extends Window {
             super(file, "Folder.obj");
         }
     }
+    private static class ReturnFolderIcon extends FolderIcon{
+        public ReturnFolderIcon(File file) {
+            super(file);
+        }
+        @Override
+        protected void createCachedImage(int width, int height) {
+            if (width <= 0 || height <= 0) {
+                System.err.println("Invalid dimensions for cachedImage: " + width + "x" + height);
+                return;
+            }
 
+            cachedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics g = cachedImage.createGraphics();
+            Graphics2D g2d = (Graphics2D) g.create();
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setComposite(AlphaComposite.Clear);
+            g2d.fillRect(0, 0, cachedImage.getWidth(), cachedImage.getHeight());
+            g2d.setComposite(AlphaComposite.SrcOver);
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                    RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            Font basefont = SnowMemo.currentTheme.getFonts()[0].deriveFont(64f);
+            String text = "↩Parent dir";
+
+            float fontSize = basefont.getSize2D();
+            Font scaledFont = basefont.deriveFont(fontSize);
+            FontMetrics fm = g2d.getFontMetrics(scaledFont);
+            float padding = 15;
+            while ((fm.stringWidth(text) > cachedImage.getWidth() - padding || fm.getHeight() > cachedImage.getHeight() - padding)
+                    && fontSize > 1) {
+                fontSize -= 0.5f;
+                scaledFont = basefont.deriveFont(fontSize);
+                fm = g2d.getFontMetrics(scaledFont);
+            }
+
+            g2d.setFont(scaledFont);
+
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            int textWidth = fm.stringWidth(text);
+            int textHeight = fm.getHeight();
+
+            int x = (cachedImage.getWidth() - textWidth) / 2;
+
+            int y = (cachedImage.getHeight() - textHeight) / 2 + fm.getAscent();
+
+            g2d.setColor(Color.BLACK);
+            g2d.drawString(text, x, y);
+
+            g2d.dispose();
+            g.dispose();
+        }
+    }
     private static class FileIcon extends FileChooserIcon {
         public FileIcon(File file) {
             super(file, "File.obj");
         }
     }
-
     public FileFilter getFileFilter() {
         return fileFilter;
     }
