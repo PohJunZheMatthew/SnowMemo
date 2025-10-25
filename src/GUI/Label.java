@@ -15,6 +15,7 @@ public class Label extends GUIComponent {
     private int verticalAlignment = SwingConstants.CENTER;
     private int padding = 0;
     private boolean bold = false;
+    private boolean italic = false;
     private float CornerRadius = 0f;
     public enum AutoResizeMode {
         NONE,
@@ -119,6 +120,7 @@ public class Label extends GUIComponent {
 
     private void updateFontScale() {
         Font f = bold ? baseFont.deriveFont(Font.BOLD) : baseFont;
+        f = italic ? f.deriveFont(Font.ITALIC) : f;
         if (autoResizeMode == AutoResizeMode.NONE || text.isEmpty()) {
             scaledFont = f;
             return;
@@ -148,7 +150,7 @@ public class Label extends GUIComponent {
             }
         }
         float newSize = Math.max(8, f.getSize2D() * scale);
-        scaledFont = f.deriveFont(newSize*1.2f);
+        scaledFont = f.deriveFont(newSize);
     }
 
     private int calculateHorizontalPosition(int textWidth, int containerWidth) {
@@ -177,6 +179,12 @@ public class Label extends GUIComponent {
 
     public Label setBold(boolean bold) {
         this.bold = bold;
+        refresh();
+        return this;
+    }
+
+    public Label setItalic(boolean italic){
+        this.italic = italic;
         refresh();
         return this;
     }

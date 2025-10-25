@@ -8,6 +8,7 @@ import Main.ShaderProgram;
 import Main.Texture;
 import Main.Utils;
 import Main.Window;
+import com.mongodb.lang.NonNull;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -85,7 +86,7 @@ public class ShadowMap {
     /**
      * Render shadow map for a list of meshes
      */
-    public void render(Window window, List<Mesh> meshes, Vector3f sceneCenter) {
+    public void render(Window window, @NonNull List<Mesh> meshes, Vector3f sceneCenter) {
         // Get primary light direction
         updateLightDirection(window, sceneCenter);
 

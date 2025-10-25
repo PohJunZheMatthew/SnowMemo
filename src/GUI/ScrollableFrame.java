@@ -120,6 +120,8 @@ public class ScrollableFrame extends GUIComponent {
             getWindowParent().MouseButtonCallbacks.add(mouseButtonCallback);
     }
     private void handleScroll(double xoffset, double yoffset) {
+        Point2D mousePos = new Point2D.Double(getMousePos(getWindowParent()).getX()*2,getMousePos(getWindowParent()).getY()*2);
+        if (mousePos == null || !hitBox.contains(mousePos)) return;
         if (verticalScrollbarVisible && yoffset != 0) {
             int newScroll = scrollY - (int)(yoffset * scrollSpeed);
             if (smoothScrollEnabled) {
@@ -268,6 +270,16 @@ public class ScrollableFrame extends GUIComponent {
             g2.fillRect(0, 0, getWidthPx(), getHeightPx());
         }
 
+        Shape oldClip = g2.getClip();
+        if (cornerRadius > 0) {
+            g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, viewportWidth, viewportHeight, cornerRadius, cornerRadius));
+        } else {
+            g2.clipRect(0, 0, viewportWidth, viewportHeight);
+        }
+        g2.translate(-scrollX, -scrollY);
+        renderChildren(g2);
+        g2.translate(scrollX, scrollY);
+        g2.setClip(oldClip);
         if (showBorder) {
             Stroke s = g2.getStroke();
             g2.setColor(borderColor);
@@ -290,19 +302,7 @@ public class ScrollableFrame extends GUIComponent {
             }
             g2.setStroke(s);
         }
-
-        Shape oldClip = g2.getClip();
-        if (cornerRadius > 0) {
-            g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, viewportWidth, viewportHeight, cornerRadius, cornerRadius));
-        } else {
-            g2.clipRect(0, 0, viewportWidth, viewportHeight);
-        }
-        g2.translate(-scrollX, -scrollY);
-        renderChildren(g2);
-        g2.translate(scrollX, scrollY);
-        g2.setClip(oldClip);
-
-        if (verticalScrollbarVisible) drawVerticalScrollbar(g2, viewportWidth, viewportHeight);
+        if (verticalScrollbarVisible) drawVerticalScrollbar(g2, viewportWidth-15, viewportHeight);
         if (horizontalScrollbarVisible) drawHorizontalScrollbar(g2, viewportWidth, viewportHeight);
         if (showScrollProgress && verticalScrollbarVisible) drawScrollProgress(g2, viewportWidth, viewportHeight);
 
@@ -345,7 +345,7 @@ public class ScrollableFrame extends GUIComponent {
                     childGraphics.translate(childX, childY);
                     child.widthPx = (int) (this.widthPx * child.width);
                     child.heightPx = (int) (this.heightPx * child.height);
-                    child.paintComponent(childGraphics);
+                    child.print(childGraphics);
                     childGraphics.dispose();
                 }
             }
@@ -360,7 +360,9 @@ public class ScrollableFrame extends GUIComponent {
         verticalTrackBounds.setBounds(getxPx() + viewWidth, getyPx() + y, width, height);
         g2d.setColor(SCROLLBAR_TRACK_COLOR);
         g2d.fillRect(viewWidth, y, width, height);
-
+//        g2d.setColor(Color.BLACK);
+//        g2d.drawRect(viewWidth,y,width,height);
+//        System.out.println("viewWidth = " + viewWidth);
         int maxScroll = getMaxScrollY();
         if (maxScroll > 0) {
             int thumbHeight = Math.max(MIN_THUMB_SIZE, (int)((double)viewHeight / contentHeight * height));
