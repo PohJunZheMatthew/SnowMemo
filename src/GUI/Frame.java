@@ -9,6 +9,8 @@ import org.lwjgl.glfw.GLFWMouseButtonCallback;
 
 import java.awt.*;
 import java.awt.geom.Point2D;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -42,10 +44,163 @@ public class Frame extends GUIComponent {
         init();
     }
 
+    @Override
     public void init() {
         setupMouseButtonCallback();
         setupCursorPosCallback();
     }
+
+    // --- RENDER (OPENGL THREAD) ---
+    @Override
+    public void render() {
+        // 1. Visibility Check
+        if (!visible) return;
+
+        // 2. Calculate Screen Coordinates
+        if (parent != null) {
+            widthPx  = (int) (parent.getWidthPx() * width);
+            heightPx = (int) (parent.getHeightPx() * height);
+            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
+            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
+        } else {
+            widthPx  = (int) (windowParent.getWidth() * width);
+            heightPx = (int) (windowParent.getHeight() * height);
+            xPx = (int) (windowParent.getWidth() * x);
+            yPx = (int) (windowParent.getHeight() * y);
+        }
+
+        // 3. Update Hitbox for events
+        updateHitBox();
+
+        // 4. Mark Dirty (Crucial: tells background thread to regen texture)
+        markDirty();
+
+        // 5. Setup OpenGL
+        boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+        if (wasDepthTestEnabled) glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // 6. Draw the Frame's Texture
+        renderGUIImage();
+
+        // 7. Cleanup
+        glDisable(GL_BLEND);
+        if (wasDepthTestEnabled) glEnable(GL_DEPTH_TEST);
+
+        // Note: We do NOT call child.render() here.
+        // Children are baked into renderGUIImage() via paintComponent().
+    }
+
+    // --- PAINT (BACKGROUND THREAD) ---
+    @Override
+    protected void paintComponent(Graphics g) {
+        // SAFETY: Prevent 0-size crash
+        if (getWidthPx() <= 0 || getHeightPx() <= 0) return;
+
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // Draw background
+        g2.setColor(backgroundColor);
+        if (cornerRadius > 0) {
+            g2.fillRoundRect(0, 0, getWidthPx(), getHeightPx(), cornerRadius, cornerRadius);
+        } else {
+            g2.fillRect(0, 0, getWidthPx(), getHeightPx());
+        }
+
+        // Clip content to frame bounds (handling corners)
+        Shape oldClip = g2.getClip();
+        if (cornerRadius > 0) {
+            g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, getWidthPx(), getHeightPx(), cornerRadius, cornerRadius));
+        } else {
+            g2.clipRect(0, 0, getWidthPx(), getHeightPx());
+        }
+
+        // Render children into this texture
+        renderChildren(g2);
+
+        // Restore clip
+        g2.setClip(oldClip);
+
+        // Draw border on top
+        if (showBorder) {
+            Stroke s = g2.getStroke();
+            g2.setColor(borderColor);
+            g2.setStroke(new BasicStroke(borderThickness));
+            float half = borderThickness / 2f;
+            if (cornerRadius > 0) {
+                g2.drawRoundRect(
+                        Math.round(half),
+                        Math.round(half),
+                        Math.round(getWidthPx() - borderThickness),
+                        Math.round(getHeightPx() - borderThickness),
+                        cornerRadius,
+                        cornerRadius
+                );
+            } else {
+                g2.drawRect(
+                        Math.round(half),
+                        Math.round(half),
+                        Math.round(getWidthPx() - borderThickness),
+                        Math.round(getHeightPx() - borderThickness)
+                );
+            }
+            g2.setStroke(s);
+        }
+
+        g2.dispose();
+    }
+
+    private void renderChildren(Graphics2D g2) {
+        if (getChildren() == null) return;
+        int contentAreaWidth = getWidthPx();
+        int contentAreaHeight = getHeightPx();
+
+        // Prevent math errors if frame is tiny
+        if (contentAreaWidth <= 0 || contentAreaHeight <= 0) return;
+
+        synchronized (getChildren()) {
+            // Copy list to avoid concurrent modification issues
+            List<GUIComponent> childList = new ArrayList<>(getChildren());
+
+            for (GUIComponent child : childList) {
+                if (child != null && child.isVisible()) {
+                    child.threadRendering = false; // Optimization: Stop child's own render thread
+
+                    int childWidth = (int) (child.getWidth() * contentAreaWidth);
+                    int childHeight = (int) (child.getHeight() * contentAreaHeight);
+                    int childX = (int) (child.getX() * contentAreaWidth);
+                    int childY = (int) (child.getY() * contentAreaHeight);
+
+                    Graphics2D childGraphics = (Graphics2D) g2.create();
+                    childGraphics.translate(childX, childY);
+
+                    // SAVE OLD STATE
+                    int oldW = child.widthPx;
+                    int oldH = child.heightPx;
+
+                    // CRITICAL FIX: Ensure non-zero dimensions
+                    child.widthPx = Math.max(1, childWidth);
+                    child.heightPx = Math.max(1, childHeight);
+
+                    try {
+                        child.print(childGraphics);
+                    } catch (Exception e) {
+                        // Swallow print errors to keep the frame alive
+                    }
+
+                    // RESTORE STATE
+                    child.widthPx = oldW;
+                    child.heightPx = oldH;
+
+                    childGraphics.dispose();
+                }
+            }
+        }
+    }
+
+    // --- EVENTS ---
 
     private void setupMouseButtonCallback() {
         mouseButtonCallback = new GLFWMouseButtonCallback() {
@@ -82,6 +237,8 @@ public class Frame extends GUIComponent {
         int adjustedMouseX = (int)(scaledMousePos.getX() - xPx);
         int adjustedMouseY = (int)(scaledMousePos.getY() - yPx);
 
+        // Iterate backwards (Top Z-Index first) if you had Z-sorting,
+        // but standard loop is fine if painting order matches event order
         for (GUIComponent child : getChildren()) {
             if (child == null || !child.isVisible()) continue;
 
@@ -89,26 +246,28 @@ public class Frame extends GUIComponent {
             int childY = (int)(child.getY() * getHeightPx());
             int childWidth = (int)(child.getWidth() * getWidthPx());
             int childHeight = (int)(child.getHeight() * getHeightPx());
-            boolean b = adjustedMouseX >= childX && adjustedMouseX <= childX + childWidth &&
+
+            boolean hit = adjustedMouseX >= childX && adjustedMouseX <= childX + childWidth &&
                     adjustedMouseY >= childY && adjustedMouseY <= childY + childHeight;
-            if (b) {
+
+            if (hit) {
                 var event = new MouseClickEvent(
                         child,
                         adjustedMouseX - childX,
                         adjustedMouseY - childY,
                         button
                 );
-                System.out.println("Created event");
+
                 for (EventCallBack<?> callback : child.callBacks) {
-                    System.out.println("callback = " + callback);
-                    try {
-                        ((GUI.Events.MouseClickCallBack) callback).onEvent(event);
-                    } catch (Exception e) {
-                        System.err.println("Error in child click callback: " + e.getMessage());
+                    if (callback instanceof GUI.Events.MouseClickCallBack) {
+                        try {
+                            ((GUI.Events.MouseClickCallBack) callback).onEvent(event);
+                        } catch (Exception e) {
+                            System.err.println("Error in child click callback: " + e.getMessage());
+                        }
                     }
-//                    r
                 }
-                break;
+                break; // Consume event
             }
         }
     }
@@ -176,124 +335,13 @@ public class Frame extends GUIComponent {
     }
 
     @Override
-    protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        // Draw background
-        g2.setColor(backgroundColor);
-        if (cornerRadius > 0) {
-            g2.fillRoundRect(0, 0, getWidthPx(), getHeightPx(), cornerRadius, cornerRadius);
-        } else {
-            g2.fillRect(0, 0, getWidthPx(), getHeightPx());
-        }
-
-        // Draw border
-        if (showBorder) {
-            Stroke s = g2.getStroke();
-            g2.setColor(borderColor);
-            g2.setStroke(new BasicStroke(borderThickness));
-            float half = borderThickness / 2f;
-            if (cornerRadius > 0) {
-                g2.drawRoundRect(
-                        Math.round(half),
-                        Math.round(half),
-                        Math.round(getWidthPx() - borderThickness),
-                        Math.round(getHeightPx() - borderThickness),
-                        cornerRadius,
-                        cornerRadius
-                );
-            } else {
-                g2.drawRect(
-                        Math.round(half),
-                        Math.round(half),
-                        Math.round(getWidthPx() - borderThickness),
-                        Math.round(getHeightPx() - borderThickness)
-                );
-            }
-            g2.setStroke(s);
-        }
-
-        // Clip content to frame bounds
-        Shape oldClip = g2.getClip();
-        if (cornerRadius > 0) {
-            g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, getWidthPx(), getHeightPx(), cornerRadius, cornerRadius));
-        } else {
-            g2.clipRect(0, 0, getWidthPx(), getHeightPx());
-        }
-
-        // Render children
-        renderChildren(g2);
-
-        g2.setClip(oldClip);
-        g2.dispose();
-    }
-
-    private void renderChildren(Graphics2D g2) {
-        if (getChildren() == null) return;
-        int contentAreaWidth = getWidthPx();
-        int contentAreaHeight = getHeightPx();
-
-        synchronized (getChildren()) {
-            for (GUIComponent child : getChildren()) {
-                if (child != null && child.isVisible()) {
-                    child.threadRendering = false;
-                    int childWidth = (int) (child.getWidth() * contentAreaWidth);
-                    int childHeight = (int) (child.getHeight() * contentAreaHeight);
-                    int childX = (int) (child.getX() * contentAreaWidth);
-                    int childY = (int) (child.getY() * contentAreaHeight);
-
-                    Graphics2D childGraphics = (Graphics2D) g2.create();
-                    childGraphics.translate(childX, childY);
-                    child.widthPx = (int) (this.widthPx * child.width);
-                    child.heightPx = (int) (this.heightPx * child.height);
-                    child.print(childGraphics);
-                    childGraphics.dispose();
-                }
-            }
-        }
-    }
-
-    @Override
-    public void render() {
-        threadRendering = false;
-        if (!visible) return;
-
-        // Update position and size
-        if (parent != null) {
-            widthPx  = (int) (parent.getWidthPx() * width);
-            heightPx = (int) (parent.getHeightPx() * height);
-            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
-            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
-        } else {
-            widthPx  = (int) (windowParent.getWidth() * width);
-            heightPx = (int) (windowParent.getHeight() * height);
-            xPx = (int) (windowParent.getWidth() * x);
-            yPx = (int) (windowParent.getHeight() * y);
-        }
-
-        updateHitBox();
-
-        // Render with OpenGL settings
-        boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        if (wasDepthTestEnabled) glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        renderGUIImage();
-        glDisable(GL_BLEND);
-        if (wasDepthTestEnabled) glEnable(GL_DEPTH_TEST);
-
-        children.sort(new ZSort());
-    }
-
-    @Override
     public Frame addChild(GUIComponent child) {
         if (autoLayout) {
             child.setY(nextChildY);
             nextChildY += child.getHeight();
         }
         child.CustomMouseEvents = true;
-        child.threadRendering = false;
+        child.threadRendering = false; // Important: Stop child's standalone renderer
         super.addChild(child);
         return this;
     }
@@ -326,7 +374,7 @@ public class Frame extends GUIComponent {
         super.cleanUp();
     }
 
-    // Getters and Setters
+    // --- GETTERS AND SETTERS ---
 
     public Color getBackgroundColor() {
         return backgroundColor;

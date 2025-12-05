@@ -3,10 +3,7 @@ package GUI;
 import GUI.Events.*;
 import GUI.Events.Event;
 import Main.Window;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFWCharCallback;
-import org.lwjgl.glfw.GLFWDropCallback;
-import org.lwjgl.glfw.GLFWKeyCallback;
+import org.lwjgl.glfw.*;
 
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
@@ -47,6 +44,7 @@ public class TextField extends GUIComponent {
     }
 
     private void fireTextChangeEvent(String oldText) {
+        markDirty();
         if (!oldText.equals(text)) {
             TextChangeEvent event = new TextChangeEvent(this, oldText, text);
             for (EventCallBack<? extends Event> listener : callBacks) {
@@ -65,7 +63,7 @@ public class TextField extends GUIComponent {
 //        window.DropCallbacks.add(new GLFWDropCallback() {
 //            @Override
 //            public void invoke(long window, int count, long names) {
-//                for (int i = 0; i < count; i++) {
+//                for (int i = 0; i < count; i++) {f
 //                    String droppedText = GLFWDropCallback.getName(names, i);
 //                    insertText(droppedText);
 //                }
@@ -77,6 +75,7 @@ public class TextField extends GUIComponent {
                 if (!focused) return;
                 if (action != GLFW.GLFW_PRESS && action != GLFW.GLFW_REPEAT) return;
                 handleKey(key, mods);
+                markDirty();
             }
         });
 
@@ -86,6 +85,7 @@ public class TextField extends GUIComponent {
                 if (!focused) return;
                 if (!Character.isDefined(codepoint)) return;
                 insertText(new String(Character.toChars(codepoint)));
+                markDirty();
             }
         });
 
@@ -103,6 +103,16 @@ public class TextField extends GUIComponent {
             clearSelection();
             resetCursorBlink();
             updateScrollOffset();
+            markDirty();
+        });
+        window.MouseButtonCallbacks.add(new GLFWMouseButtonCallback() {
+            @Override
+            public void invoke(long win, int button, int action, int mods) {
+                if (action == GLFW.GLFW_PRESS){
+                    focused = hitBox.contains(window.getMouseX(),window.getMouseY());
+                    markDirty();
+                }
+            }
         });
     }
 
@@ -153,6 +163,7 @@ public class TextField extends GUIComponent {
         resetCursorBlink();
         updateScrollOffset();
         fireTextChangeEvent(oldText);
+        markDirty();
     }
 
     private void copyToClipboard(String s) {
@@ -177,7 +188,13 @@ public class TextField extends GUIComponent {
     }
 
     private void resetCursorBlink() { showCursor = true; lastBlink = System.currentTimeMillis(); }
-    private void updateCursorBlink() { if (System.currentTimeMillis() - lastBlink > CURSOR_BLINK) { showCursor = !showCursor; lastBlink = System.currentTimeMillis(); } }
+    private void updateCursorBlink() {
+        if (System.currentTimeMillis() - lastBlink > CURSOR_BLINK) {
+            showCursor = !showCursor;
+            lastBlink = System.currentTimeMillis();
+            markDirty();
+        }
+    }
     private final BufferedImage measureBuffer = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
     private final Graphics2D measureGraphics = measureBuffer.createGraphics();
     private int measureTextWidth(String s) {
@@ -407,5 +424,9 @@ public class TextField extends GUIComponent {
             if (text.charAt(i) == ' ') return i + 1;
         }
         return text.length();
+    }
+
+    public boolean isFocused() {
+        return focused;
     }
 }

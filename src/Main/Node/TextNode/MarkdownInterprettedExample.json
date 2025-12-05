@@ -1,0 +1,38 @@
+[
+  {
+    "h1": "Hello",
+    "h2": "Contents",
+    "h3": "Vegetable",
+    "h4": "NULL",
+    "h5": "Heading 5",
+    "h6": "67...",
+    "N":"This is a regular text",
+    "B": "This is a bold text",
+    "I": "This is an italic text",
+    "BI": "This is a bold and an italic text",
+    "C": "#This is a python code to be displayed as code\nprint(\"Hello, world\")"
+  },
+  {
+    "L": [
+      {
+        "N": "This is the starting of a list",
+        "B": ",this is a bold text"
+      },
+      {
+        "L": [
+
+        ]
+      }
+    ]
+  },
+  {
+    "OL" : [
+      {
+        "N": "This will be ordered the first"
+      },
+      {
+        "N": "This is the second"
+      }
+    ]
+  }
+]

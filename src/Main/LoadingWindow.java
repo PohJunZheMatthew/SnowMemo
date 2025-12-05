@@ -358,6 +358,7 @@ public class LoadingWindow {
     }
 
     public void hide() {
+        GLFW.glfwShowWindow(parentWindow);
         GLFW.glfwHideWindow(window);
         if (parentWindow != MemoryUtil.NULL) {
             GLFW.glfwMakeContextCurrent(parentWindow);

@@ -5,6 +5,8 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -400,5 +402,169 @@ public class Utils {
         }
 
         return mesh;
+    }
+    /**
+     * Utility class for opening URLs in the default system browser.
+     * Works in headless mode (java.awt.headless=true) by using system commands.
+     * Supports: Windows, macOS, Linux, Unix, BSD, Solaris, and more.
+     */
+    public class BrowserUtil {
+
+        /**
+         * Opens a URL in the default system browser.
+         * @param url The URL to open (e.g., "https://www.google.com")
+         */
+        public static void openURL(String url) {
+            try {
+                // Validate and normalize the URL
+                URI uri = new URI(url);
+                openURI(uri);
+            } catch (URISyntaxException e) {
+                System.err.println("Invalid URL: " + url);
+                e.printStackTrace();
+            }
+        }
+
+        /**
+         * Opens a URI in the default system browser.
+         * @param uri The URI to open
+         */
+        public static void openURI(URI uri) {
+            String url = uri.toString();
+            String os = System.getProperty("os.name").toLowerCase();
+
+            try {
+                if (os.contains("win")) {
+                    // Windows (all versions)
+                    new ProcessBuilder("cmd", "/c", "start", "", url).start();
+
+                } else if (os.contains("mac") || os.contains("darwin")) {
+                    // macOS / Mac OS X / Darwin
+                    new ProcessBuilder("open", url).start();
+
+                } else if (os.contains("nix") || os.contains("nux") || os.contains("aix")) {
+                    // Linux, Unix, AIX
+                    // Try xdg-open first (works on most modern Linux distros)
+                    if (tryCommand("xdg-open", url)) {
+                        return;
+                    }
+                    // Fallback to other common browsers
+                    String[] browsers = {"gnome-open", "kde-open", "firefox", "mozilla",
+                            "chromium", "google-chrome", "opera", "epiphany"};
+                    for (String browser : browsers) {
+                        if (tryCommand(browser, url)) {
+                            return;
+                        }
+                    }
+                    System.err.println("Could not find a suitable browser on Linux/Unix");
+
+                } else if (os.contains("bsd")) {
+                    // FreeBSD, OpenBSD, NetBSD
+                    if (tryCommand("xdg-open", url)) {
+                        return;
+                    }
+                    if (tryCommand("firefox", url)) {
+                        return;
+                    }
+                    System.err.println("Could not find a suitable browser on BSD");
+
+                } else if (os.contains("sunos") || os.contains("solaris")) {
+                    // Solaris / SunOS
+                    if (tryCommand("firefox", url)) {
+                        return;
+                    }
+                    if (tryCommand("/usr/dt/bin/sdtwebclient", url)) {
+                        return;
+                    }
+                    System.err.println("Could not find a suitable browser on Solaris");
+
+                } else {
+                    System.err.println("Unsupported operating system: " + os);
+                }
+            } catch (IOException e) {
+                System.err.println("Failed to open URL: " + url);
+                e.printStackTrace();
+            }
+        }
+
+        /**
+         * Try to execute a command to open a URL.
+         * @param command The command to try
+         * @param url The URL to open
+         * @return true if command executed successfully, false otherwise
+         */
+        private static boolean tryCommand(String command, String url) {
+            try {
+                new ProcessBuilder(command, url).start();
+                return true;
+            } catch (IOException e) {
+                return false;
+            }
+        }
+
+
+        /**
+         * Opens a URL with error feedback.
+         * @param url The URL to open
+         * @return true if the command was executed successfully, false otherwise
+         */
+        public static boolean openURLWithFeedback(String url) {
+            try {
+                URI uri = new URI(url);
+                return openURIWithFeedback(uri);
+            } catch (URISyntaxException e) {
+                System.err.println("Invalid URL: " + url);
+                e.printStackTrace();
+                return false;
+            }
+        }
+
+        /**
+         * Opens a URI with error feedback.
+         * @param uri The URI to open
+         * @return true if the command was executed successfully, false otherwise
+         */
+        public static boolean openURIWithFeedback(URI uri) {
+            String url = uri.toString();
+            String os = System.getProperty("os.name").toLowerCase();
+
+            try {
+                if (os.contains("win")) {
+                    new ProcessBuilder("cmd", "/c", "start", "", url).start();
+                    return true;
+
+                } else if (os.contains("mac") || os.contains("darwin")) {
+                    new ProcessBuilder("open", url).start();
+                    return true;
+
+                } else if (os.contains("nix") || os.contains("nux") || os.contains("aix")) {
+                    if (tryCommand("xdg-open", url)) return true;
+                    String[] browsers = {"gnome-open", "kde-open", "firefox", "mozilla",
+                            "chromium", "google-chrome", "opera", "epiphany"};
+                    for (String browser : browsers) {
+                        if (tryCommand(browser, url)) return true;
+                    }
+                    return false;
+
+                } else if (os.contains("bsd")) {
+                    if (tryCommand("xdg-open", url)) return true;
+                    if (tryCommand("firefox", url)) return true;
+                    return false;
+
+                } else if (os.contains("sunos") || os.contains("solaris")) {
+                    if (tryCommand("firefox", url)) return true;
+                    if (tryCommand("/usr/dt/bin/sdtwebclient", url)) return true;
+                    return false;
+
+                } else {
+                    System.err.println("Unsupported operating system: " + os);
+                    return false;
+                }
+            } catch (IOException e) {
+                System.err.println("Failed to open URL: " + url);
+                e.printStackTrace();
+                return false;
+            }
+        }
     }
 }

@@ -16,12 +16,21 @@ import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 public class Texture {
     private final int textureId;
     private final boolean hasAlpha;
-    private final int width,height;
-    protected Texture(int width,int height,int textureId, boolean hasAlpha) {
+    private final int width, height;
+
+    // Reusable buffers to avoid allocations on every update
+    private ByteBuffer reusableBuffer;
+    private int[] reusablePixelArray;
+
+    protected Texture(int width, int height, int textureId, boolean hasAlpha) {
         this.width = width;
         this.height = height;
         this.textureId = textureId;
         this.hasAlpha = hasAlpha;
+
+        // Pre-allocate buffers for updates
+        this.reusableBuffer = BufferUtils.createByteBuffer(width * height * 4);
+        this.reusablePixelArray = new int[width * height];
     }
 
     // --------- Public API ----------
@@ -52,6 +61,9 @@ public class Texture {
 
     public void cleanup() {
         glDeleteTextures(textureId);
+        // Release reusable buffers
+        reusableBuffer = null;
+        reusablePixelArray = null;
     }
 
     public int getTextureid() {
@@ -60,6 +72,71 @@ public class Texture {
 
     public boolean hasAlpha() {
         return hasAlpha;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public int getHeight() {
+        return height;
+    }
+
+    // --------- Update Methods ----------
+
+    /**
+     * Fast update without mipmap regeneration (recommended for UI components)
+     * ~2-3x faster than update() method
+     */
+    public void updateFast(BufferedImage image) {
+        if (image.getWidth() != width || image.getHeight() != height) {
+            throw new IllegalArgumentException("Texture.updateFast(): image size changed! Use a new Texture instance.");
+        }
+
+        // Reuse existing arrays - no allocation
+        image.getRGB(0, 0, width, height, reusablePixelArray, 0, width);
+        reusableBuffer.clear();
+
+        // Flip Y during copy
+        for (int y = 0; y < height; y++) {
+            int flippedY = height - 1 - y;
+            for (int x = 0; x < width; x++) {
+                int pixel = reusablePixelArray[flippedY * width + x];
+                reusableBuffer.put((byte)((pixel >> 16) & 0xFF)); // R
+                reusableBuffer.put((byte)((pixel >> 8) & 0xFF));  // G
+                reusableBuffer.put((byte)(pixel & 0xFF));         // B
+                reusableBuffer.put((byte)((pixel >> 24) & 0xFF)); // A
+            }
+        }
+        reusableBuffer.flip();
+
+        bind();
+        glTexSubImage2D(
+                GL_TEXTURE_2D,
+                0,
+                0, 0,
+                width,
+                height,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                reusableBuffer
+        );
+        unbind();
+
+        // NO mipmap regeneration - much faster for UI
+    }
+
+    /**
+     * Full update with mipmap regeneration (use for 3D textures that need mipmaps)
+     * Slower but maintains mipmap quality
+     */
+    public void update(BufferedImage image) {
+        updateFast(image);
+
+        // Regenerate mipmaps for consistency (expensive!)
+        bind();
+        glGenerateMipmap(GL_TEXTURE_2D);
+        unbind();
     }
 
     // --------- Internal Helpers ----------
@@ -119,7 +196,7 @@ public class Texture {
         // Unbind for safety
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        return new Texture(image.getWidth(),image.getHeight(),texId, hasAlpha);
+        return new Texture(image.getWidth(), image.getHeight(), texId, hasAlpha);
     }
 
     private static byte[] getRGBA(BufferedImage image, boolean flipY) {
@@ -141,13 +218,5 @@ public class Texture {
             }
         }
         return data;
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public int getHeight() {
-        return height;
     }
 }

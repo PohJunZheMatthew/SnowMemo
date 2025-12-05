@@ -33,7 +33,9 @@ import static org.lwjgl.opengl.GL13.*;
 import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
-
+/*
+* It is recommanded to use IMGUI for the gui, but if you want to do java2d billboard you can use this class*/
+@Deprecated(since = "25",forRemoval = false)
 public abstract class GUIComponent implements Renderable {
     protected int widthPx = 1, heightPx = 1;
     protected int xPx = 1, yPx = 1;
@@ -44,10 +46,10 @@ public abstract class GUIComponent implements Renderable {
     protected final int vaoId, vboId, idxVboId;
     protected boolean CustomMouseEvents = false;
     private static final float[] vertices = {
-            0.0f, 0.0f, 0.0f,       0.0f, 1.0f,  // U: 1.0 -> 0.0
-            1.0f, 0.0f, 0.0f,       1.0f, 1.0f,  // U: 0.0 -> 1.0
-            1.0f, 1.0f, 0.0f,       1.0f, 0.0f,  // U: 0.0 -> 1.0
-            0.0f, 1.0f, 0.0f,       0.0f, 0.0f   // U: 1.0 -> 0.0
+            0.0f, 0.0f, 0.0f,       0.0f, 1.0f,
+            1.0f, 0.0f, 0.0f,       1.0f, 1.0f,
+            1.0f, 1.0f, 0.0f,       1.0f, 0.0f,
+            0.0f, 1.0f, 0.0f,       0.0f, 0.0f
     };
     private static final int[] indices = {
             0, 3, 2,
@@ -59,7 +61,6 @@ public abstract class GUIComponent implements Renderable {
     protected GUIComponent parent;
     protected final List<GUIComponent> children = new ArrayList<GUIComponent>();
 
-    // Track which windows have been initialized to prevent duplicate callbacks
     private final static Set<Window> initializedWindows = new HashSet<>();
     private final static HashMap<Window, Point2D> mpos = new HashMap<>();
     private final static HashMap<Window, GLFWMouseButtonCallback> mouseButtonCallbacks = new HashMap<>();
@@ -68,8 +69,9 @@ public abstract class GUIComponent implements Renderable {
     protected boolean visible = true;
     protected boolean mouseInside = false;
     Shape hitBox;
-    protected boolean threadRendering = true;
+    public boolean threadRendering = true;
     private volatile boolean rendering = true;
+    private boolean pixelSized = false;
     private final Object imageLock = new Object();
     private volatile BufferedImage preRenderedImage;
     private final ScheduledExecutorService renderExecutor =
@@ -79,6 +81,33 @@ public abstract class GUIComponent implements Renderable {
                 return t;
             });
 
+    private boolean useAbsoluteSize = false;
+    private int absoluteWidthPx = 0;
+    private int absoluteHeightPx = 0;
+    private boolean useAbsolutePosition = false;
+    private int absoluteXPx = 0;
+    private int absoluteYPx = 0;
+    private int lastTextureWidth = -1;
+    private int lastTextureHeight = -1;
+    private List<GUIComponent> sortedChildren = new ArrayList<>();
+    private boolean childrenDirty = true;
+
+    // ALTERNATIVE: Even better approach - cache the texture and only update when dirty
+// Add these fields:
+    private boolean textureDirty = true;
+    private BufferedImage lastRenderedImage = null;
+    private boolean needsGPUUpload;
+    private boolean needsPaint;
+
+    // Add this method to mark GUI as needing re-render:
+    public void markDirty() {
+        synchronized (imageLock) {
+            needsPaint = true;      // Background thread should call paintComponent()
+            needsGPUUpload = true;  // GPU should upload when ready
+            textureDirty = true;    // Backwards compatibility
+        }
+    }
+
     public GUIComponent(Window window) {
         this(window, 0.1f, 0.1f);
     }
@@ -86,7 +115,12 @@ public abstract class GUIComponent implements Renderable {
     public GUIComponent(Window window, float width, float height) {
         this(window, 0, 0, width, height);
     }
-
+    public GUIComponent(Window window, int widthPx,int heightPx){
+        this(window,0,0,0,0);
+        this.widthPx = widthPx;
+        this.heightPx = heightPx;
+        pixelSized = true;
+    }
     public GUIComponent(Window window, float x, float y, float width, float height) {
         this.windowParent = window;
         this.x = x;
@@ -150,29 +184,47 @@ public abstract class GUIComponent implements Renderable {
         }
         renderExecutor.scheduleAtFixedRate(() -> {
             try {
-
-                if (threadRendering) {
-                    int w, h;
-                    synchronized (imageLock) {
-                        w = widthPx;
-                        h = heightPx;
-                    }
-
-                    if (w <= 0 || h <= 0) return;
-
-                    BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-                    Graphics2D g = tempImage.createGraphics();
-                    try {
-                        paintComponent(g);
-                    } finally {
-                        g.dispose();
-                    }
-
-                    synchronized (imageLock) {
-                        preRenderedImage = tempImage;
-                    }
-                }else{
+                if (!threadRendering) {
                     preRenderedImage = null;
+                    return;
+                }
+
+                // Check if we need to paint
+                boolean shouldPaint;
+                synchronized (imageLock) {
+                    shouldPaint = needsPaint || preRenderedImage == null;
+                }
+
+                if (!shouldPaint) {
+                    return;  // Skip this frame - nothing changed
+                }
+
+                int w, h;
+                synchronized (imageLock) {
+                    w = widthPx;
+                    h = heightPx;
+                }
+
+                if (w <= 0 || h <= 0) return;
+
+                // Create new image
+                BufferedImage tempImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = tempImage.createGraphics();
+                try {
+                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                            RenderingHints.VALUE_ANTIALIAS_ON);
+                    g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                            RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                    paintComponent(g);
+                } finally {
+                    g.dispose();
+                }
+
+                synchronized (imageLock) {
+                    preRenderedImage = tempImage;
+                    needsPaint = false;      // Painting done
+                    needsGPUUpload = true;   // But GPU upload still needed
+                    textureDirty = true;     // Backwards compatibility
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -181,12 +233,9 @@ public abstract class GUIComponent implements Renderable {
         }, 0, 16, TimeUnit.MILLISECONDS);
     }
 
-    /**
-     * Initialize window event callbacks if not already done
-     */
     private static synchronized void initializeWindow(Window window) {
         if (initializedWindows.contains(window)) {
-            return; // Already initialized
+            return;
         }
         GUIComponents.put(window, new HashMap<>());
         mpos.put(window, new Point2D.Double(0, 0));
@@ -195,7 +244,7 @@ public abstract class GUIComponent implements Renderable {
             public void invoke(long windowHandle, double xpos, double ypos) {
                 for (Map.Entry<Window, Point2D> entry : mpos.entrySet()) {
                     if (entry.getKey().getWindowHandle() == windowHandle) {
-                        entry.setValue(new Point2D.Double(xpos, ypos));
+                        entry.setValue(new Point2D.Double(window.getMouseX(), window.getMouseY()));
                         break;
                     }
                 }
@@ -211,7 +260,6 @@ public abstract class GUIComponent implements Renderable {
                 if (targetWindow != null) {
                     var comps = GUIComponents.get(targetWindow);
                     if (comps != null) {
-                        // Create a copy to avoid ConcurrentModificationException
                         List<GUIComponent> componentsCopy;
                         synchronized (comps) {
                             componentsCopy = new ArrayList<>(comps.values());
@@ -219,12 +267,11 @@ public abstract class GUIComponent implements Renderable {
 
                         for (GUIComponent g : componentsCopy) {
                             if (!g.CustomMouseEvents) {
-                                final MouseEnterEvent mouseEnterEvent = new MouseEnterEvent(g, (int) xpos, (int) ypos);
-                                final MouseExitEvent mouseExitEvent = new MouseExitEvent(g, (int) xpos, (int) ypos);
+                                final MouseEnterEvent mouseEnterEvent = new MouseEnterEvent(g, (int) window.getMouseX(), (int) window.getMouseY());
+                                final MouseExitEvent mouseExitEvent = new MouseExitEvent(g, (int) window.getMouseX(), (int) window.getMouseY());
 
-                                if (g.hitBox.contains(xpos * 2, ypos * 2) && !g.mouseInside) {
+                                if (g.hitBox.contains(window.getMouseX(), window.getMouseY()) && !g.mouseInside) {
                                     g.mouseInside = true;
-                                    // Create a copy of callbacks
                                     List<EventCallBack<? extends Event>> callbacksCopy = new ArrayList<>(g.callBacks);
                                     callbacksCopy.forEach(callBack -> {
                                         if (callBack instanceof MouseEnterCallBack) {
@@ -233,9 +280,8 @@ public abstract class GUIComponent implements Renderable {
                                     });
                                 }
 
-                                if (!g.hitBox.contains(xpos * 2, ypos * 2) && g.mouseInside) {
+                                if (!g.hitBox.contains(window.getMouseX() * 2, window.getMouseY() * 2) && g.mouseInside) {
                                     g.mouseInside = false;
-                                    // Create a copy of callbacks
                                     List<EventCallBack<? extends Event>> callbacksCopy = new ArrayList<>(g.callBacks);
                                     callbacksCopy.forEach(callBack -> {
                                         if (callBack instanceof MouseExitCallBack) {
@@ -266,10 +312,9 @@ public abstract class GUIComponent implements Renderable {
                         Point2D mousePos = mpos.get(targetWindow);
                         HashMap<Integer, GUIComponent> windowComponents = GUIComponents.get(targetWindow);
                         if (mousePos != null && windowComponents != null) {
-                            double mx = mousePos.getX() * 2;
-                            double my = mousePos.getY() * 2;
+                            double mx = window.getMouseX();
+                            double my = window.getMouseY();
 
-                            // CREATE A COPY OF THE VALUES TO AVOID ConcurrentModificationException
                             List<GUIComponent> componentsCopy = new ArrayList<>(windowComponents.values());
 
                             for (GUIComponent root : componentsCopy) {
@@ -286,7 +331,6 @@ public abstract class GUIComponent implements Renderable {
         mouseButtonCallbacks.put(window, mouseCallback);
         window.MouseButtonCallbacks.add(mouseCallback);
 
-        // Mark window as initialized
         initializedWindows.add(window);
     }
 
@@ -308,23 +352,81 @@ public abstract class GUIComponent implements Renderable {
         }
     }
 
+    public void setAbsoluteSize(int widthPx, int heightPx) {
+        this.useAbsoluteSize = true;
+        this.absoluteWidthPx = widthPx;
+        this.absoluteHeightPx = heightPx;
+    }
+
+    public void setAbsolutePosition(int xPx, int yPx) {
+        this.useAbsolutePosition = true;
+        this.absoluteXPx = xPx;
+        this.absoluteYPx = yPx;
+    }
+
+    public void disableAbsoluteSize() {
+        this.useAbsoluteSize = false;
+    }
+
+    public void disableAbsolutePosition() {
+        this.useAbsolutePosition = false;
+    }
+
+    public boolean isUsingAbsoluteSize() {
+        return useAbsoluteSize;
+    }
+
+    public boolean isUsingAbsolutePosition() {
+        return useAbsolutePosition;
+    }
+
+    public int getAbsoluteWidthPx() {
+        return absoluteWidthPx;
+    }
+
+    public int getAbsoluteHeightPx() {
+        return absoluteHeightPx;
+    }
+
+    public int getAbsoluteXPx() {
+        return absoluteXPx;
+    }
+
+    public int getAbsoluteYPx() {
+        return absoluteYPx;
+    }
+
     public void updateHitBox() {
-        if (parent != null) {
-            widthPx  = (int) (parent.getWidthPx() * width);
-            heightPx = (int) (parent.getHeightPx() * height);
-            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
-            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
-        } else {
-            widthPx  = (int) (windowParent.getWidth() * width);
-            heightPx = (int) (windowParent.getHeight() * height);
-            xPx = (int) (windowParent.getWidth() * x);
-            yPx = (int) (windowParent.getHeight() * y);
+        if (useAbsoluteSize) {
+            widthPx = absoluteWidthPx;
+            heightPx = absoluteHeightPx;
+        } else if (!pixelSized) {
+            if (parent != null) {
+                widthPx = (int) (parent.getWidthPx() * width);
+                heightPx = (int) (parent.getHeightPx() * height);
+            } else {
+                widthPx = (int) (windowParent.getWidth() * width);
+                heightPx = (int) (windowParent.getHeight() * height);
+            }
         }
+
+        if (useAbsolutePosition) {
+            xPx = absoluteXPx;
+            yPx = absoluteYPx;
+        } else if (!pixelSized) {
+            if (parent != null) {
+                xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
+                yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
+            } else {
+                xPx = (int) (windowParent.getWidth() * x);
+                yPx = (int) (windowParent.getHeight() * y);
+            }
+        }
+
         if (hitBox instanceof Rectangle) ((Rectangle)hitBox).setBounds(xPx,yPx,widthPx,heightPx);
     }
 
     public static void renderGUIs(Window window) {
-        // Ensure window is initialized
         if (!GUIComponents.containsKey(window)) {
             initializeWindow(window);
         }
@@ -340,11 +442,20 @@ public abstract class GUIComponent implements Renderable {
             }
         }
     }
-
+    int calls = 0;
     public void render() {
+        calls++;
         if (!visible) return;
-
+        if (calls%5==0){
+            markDirty();
+        }
+        int oldWidthPx = widthPx;
+        int oldHeightPx = heightPx;
         updateHitBox();
+
+        if (widthPx != oldWidthPx || heightPx != oldHeightPx) {
+            markDirty();
+        }
 
         boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         if (wasDepthTestEnabled) {
@@ -360,144 +471,85 @@ public abstract class GUIComponent implements Renderable {
         if (wasDepthTestEnabled) {
             glEnable(GL_DEPTH_TEST);
         }
-        children.sort(new ZSort());
-        for(GUIComponent child:children){
+
+        // Use cached sorted list
+        if (childrenDirty) {
+            synchronized (children) {
+                sortedChildren = new ArrayList<>(children);
+                sortedChildren.sort(new ZSort());
+                childrenDirty = false;
+            }
+        }
+
+        for (GUIComponent child : sortedChildren) {
             child.render();
         }
     }
-//    protected void renderChildrenToGraphics(Graphics g) {
-//        if (children == null || children.isEmpty()) return;
-//
-//        List<GUIComponent> sortedChildren = new ArrayList<>(children);
-//        sortedChildren.sort(new ZSort());
-//
-//        for (GUIComponent child : sortedChildren) {
-//            if (child != null && child.isVisible()) {
-//                Graphics2D g2 = (Graphics2D) g.create();
-//
-//                int childX = (int)(child.getX() * widthPx);
-//                int childY = (int)(child.getY() * heightPx);
-//                int childWidth = (int)(child.getWidth() * widthPx);
-//                int childHeight = (int)(child.getHeight() * heightPx);
-//
-//                g2.translate(childX, childY);
-//
-//                child.widthPx = childWidth;
-//                child.heightPx = childHeight;
-//
-//                child.paintComponent(g2);
-//
-//                g2.dispose();
-//            }
-//        }
-//    }
     protected void renderGUIImage() {
-        if (texture!=null){
-            texture.cleanup();
-        }
         BufferedImage imageToRender;
+        boolean needsUpload;
+
         synchronized (imageLock) {
             imageToRender = preRenderedImage;
+            needsUpload = needsGPUUpload;
         }
 
+        // Nothing to draw yet
         if (imageToRender == null) {
-            BufferedImage bi = new BufferedImage(Math.max(1, widthPx), Math.max(1, heightPx), BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = bi.createGraphics();
-            paintComponent(g);
-//            renderChildrenToGraphics(g);
-            g.dispose();
-            texture = Texture.loadTexture(bi);
-        } else {
-            texture = Texture.loadTexture(imageToRender);
-        }
-
-        // Clear any existing errors
-//        while (glGetError() != GL_NO_ERROR) { /* clear error queue */ }
-
-        shaderProgram.bind();
-
-//        int error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.err.println("ERROR after shader bind: " + error);
-//            return;
-//        }
-
-        Matrix4f projection = new Matrix4f().ortho(0, windowParent.getWidth(),
-                windowParent.getHeight(), 0, -1, 1);
-        shaderProgram.setUniform("projection", projection);
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.err.println("ERROR after projection uniform: " + error);
-//            return;
-//        }
-
-        Vector2f pos = new Vector2f(xPx, yPx);
-        Vector2f size = new Vector2f(widthPx, heightPx);
-        shaderProgram.setUniform("position", pos);
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.err.println("ERROR after position uniform: " + error);
-//            return;
-//        }
-
-        shaderProgram.setUniform("size", size);
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.out.println("ERROR after size uniform: " + error);
-//            return;
-//        }
-
-        glActiveTexture(GL_TEXTURE0);
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.out.println("ERROR after glActiveTexture: " + error);
-//            return;
-//        }
-
-        texture.bind();
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.out.println("ERROR after texture bind: " + error);
-//            return;
-//        }
-
-        shaderProgram.setUniform("guiTexture", 0);
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.out.println("ERROR after texture uniform: " + error);
-//            return;
-//        }
-        glBindVertexArray(vaoId);
-
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.out.println("ERROR after VAO bind: " + error);
-//            return;
-//        }
-
-        if (vaoId == 0) {
-            System.out.println("ERROR: VAO ID is 0!");
             return;
         }
 
-        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
+        int imgW = imageToRender.getWidth();
+        int imgH = imageToRender.getHeight();
 
-//        error = glGetError();
-//        if (error != GL_NO_ERROR) {
-//            System.out.println("ERROR after draw: " + error);
-//        }
+        boolean sizeChanged = texture == null ||
+                texture.getWidth() != imgW ||
+                texture.getHeight() != imgH;
+
+        // Upload to GPU if needed
+        if (sizeChanged) {
+            if (texture != null) {
+                texture.cleanup();
+            }
+            texture = Texture.loadTexture(imageToRender);
+            synchronized (imageLock) {
+                needsGPUUpload = false;  // Upload complete
+                textureDirty = false;    // Backwards compatibility
+            }
+        } else if (needsUpload) {
+            texture.update(imageToRender);
+            synchronized (imageLock) {
+                needsGPUUpload = false;  // Upload complete
+                textureDirty = false;    // Backwards compatibility
+            }
+        }
+
+        if (texture == null) return;
+
+        // Render the texture to screen
+        shaderProgram.bind();
+
+        Matrix4f projection = new Matrix4f().ortho(
+                0, windowParent.getWidth(),
+                windowParent.getHeight(), 0,
+                -1, 1
+        );
+
+        shaderProgram.setUniform("projection", projection);
+        shaderProgram.setUniform("position", new Vector2f(xPx, yPx));
+        shaderProgram.setUniform("size", new Vector2f(widthPx, heightPx));
+
+        glActiveTexture(GL_TEXTURE0);
+        texture.bind();
+        shaderProgram.setUniform("guiTexture", 0);
+
+        glBindVertexArray(vaoId);
+        glDrawElements(GL_TRIANGLES, indices.length, GL_UNSIGNED_INT, 0);
 
         glBindVertexArray(0);
         texture.unbind();
         shaderProgram.unbind();
     }
-
     @Override
     public void cleanUp() {
         rendering = false;
@@ -510,7 +562,6 @@ public abstract class GUIComponent implements Renderable {
                 Thread.currentThread().interrupt();
             }
         }
-        // NOW clean up OpenGL resources
         if (texture != null) {
             texture.cleanup();
             texture = null;
@@ -522,7 +573,6 @@ public abstract class GUIComponent implements Renderable {
         glDeleteBuffers(vboId);
         glDeleteBuffers(idxVboId);
 
-        // Remove from components map
         if (windowParent != null) {
             HashMap<Integer, GUIComponent> windowComponents = GUIComponents.get(windowParent);
             if (windowComponents != null) {
@@ -531,25 +581,18 @@ public abstract class GUIComponent implements Renderable {
         }
     }
 
-    /**
-     * Clean up window-specific resources when a window is closed
-     */
     public static void cleanupWindow(Window window) {
         if (window == null) return;
 
-        // Clean up all components for this window
         HashMap<Integer, GUIComponent> windowComponents = GUIComponents.get(window);
         if (windowComponents != null) {
-            // Create a copy to avoid concurrent modification
             new ArrayList<>(windowComponents.values()).forEach(GUIComponent::cleanUp);
             windowComponents.clear();
         }
 
-        // Remove window from all maps
         GUIComponents.remove(window);
         mpos.remove(window);
 
-        // Clean up callbacks
         GLFWMouseButtonCallback mouseCallback = mouseButtonCallbacks.remove(window);
         if (mouseCallback != null) {
             mouseCallback.free();
@@ -563,7 +606,6 @@ public abstract class GUIComponent implements Renderable {
         initializedWindows.remove(window);
     }
 
-    // Getters and setters
     public int getWidthPx() { return widthPx; }
     public int getHeightPx() { return heightPx; }
     public float getWidth() { return width; }
@@ -582,7 +624,12 @@ public abstract class GUIComponent implements Renderable {
     }
 
     public GUIComponent setZ_Index(int z_Index) {
-        Z_Index = z_Index;
+        if (this.Z_Index != z_Index) {
+            this.Z_Index = z_Index;
+            if (parent != null) {
+                parent.childrenDirty = true;  // Parent needs to re-sort
+            }
+        }
         return this;
     }
 
@@ -607,14 +654,14 @@ public abstract class GUIComponent implements Renderable {
         }
     }
 
-
     public <E extends Event> GUIComponent removeCallBack(EventCallBack<E> listener) {
         callBacks.remove(listener);
         return this;
     }
+
     @SuppressWarnings("unchecked")
     protected <E extends Event> void fireEvent(E event) {
-        // Create a copy to avoid ConcurrentModificationException
+        markDirty();
         List<EventCallBack<?>> listenersCopy = new ArrayList<>(callBacks);
 
         for (EventCallBack<?> listener : listenersCopy) {
@@ -625,6 +672,7 @@ public abstract class GUIComponent implements Renderable {
             }
         }
     }
+
     public List<GUIComponent> getChildren() {
         return children;
     }
@@ -640,31 +688,35 @@ public abstract class GUIComponent implements Renderable {
         return this;
     }
 
-    // Adds a child to this component
+
     public GUIComponent addChild(GUIComponent child) {
         if (child == null) return this;
-
-        // Remove child from its current parent
-        if (child.parent != null) {
-            child.parent.removeChild(child);
+        markDirty();
+        synchronized (children) {
+            if (child.parent != null) {
+                markDirty();
+                child.parent.removeChild(child);
+            }
+            children.add(child);
+            child.parent = this;
+            childrenDirty = true;  // Mark for re-sort
         }
-
-        children.add(child);
-        child.parent = this;
         return this;
     }
 
-    // Removes a child from this component
+
     public GUIComponent removeChild(GUIComponent child) {
         if (child == null) return this;
-
-        if (children.remove(child)) {
-            child.parent = null;
+        markDirty();
+        synchronized (children) {
+            if (children.remove(child)) {
+                child.parent = null;
+                childrenDirty = true;  // Mark for re-sort
+            }
         }
         return this;
     }
 
-    // Clears all children
     public void clearChildren() {
         for (GUIComponent child : new ArrayList<>(children)) {
             child.cleanUp();
@@ -677,7 +729,6 @@ public abstract class GUIComponent implements Renderable {
     public Shape getHitBox() {
         return hitBox;
     }
-
 
     protected static class ZSort implements Comparator<GUIComponent> {
         @Override
@@ -726,22 +777,34 @@ public abstract class GUIComponent implements Renderable {
         }
         return null;
     }
+
     public static Point2D getMousePos(Window w) {
         return mpos.get(w);
     }
+
     public BufferedImage print(){
         return print(widthPx,heightPx);
     }
+
     float scale = 1f;
     private BufferedImage prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
+
     public BufferedImage print(int width,int height){
+
         updateHitBox();
         if (prebufferedimage.getWidth()!=(int) (widthPx*scale) || prebufferedimage.getHeight()!=(int) (heightPx*scale)){
             prebufferedimage = new BufferedImage((int) (widthPx*scale), (int) (heightPx*scale),BufferedImage.TYPE_INT_ARGB);
         }
-        paintComponent(prebufferedimage.createGraphics());
+
+        Graphics2D g2d = prebufferedimage.createGraphics();
+        g2d.setComposite(AlphaComposite.Clear);
+        g2d.fillRect(0,0,prebufferedimage.getWidth(),prebufferedimage.getHeight());
+        g2d.setComposite(AlphaComposite.SrcOver);
+        paintComponent(g2d);
+        g2d.dispose();
         return prebufferedimage;
     }
+
     public BufferedImage print(int width,int height,float resolution){
         updateHitBox();
         if (prebufferedimage.getWidth()!=(int) (widthPx*scale) || prebufferedimage.getHeight()!=(int) (heightPx*scale)){
@@ -753,6 +816,7 @@ public abstract class GUIComponent implements Renderable {
         g.dispose();
         return prebufferedimage;
     }
+
     public void print(Graphics g) {
         updateHitBox();
         paintComponent(g);
@@ -763,42 +827,34 @@ public abstract class GUIComponent implements Renderable {
 
         for (GUIComponent child : children) {
             if (child != null && child.isVisible()) {
-                // Create a new graphics context for each child
                 Graphics2D g2 = (Graphics2D) g.create();
 
-                // Calculate child's position and size relative to parent
                 int childX = (int) (child.getX() * widthPx);
                 int childY = (int) (child.getY() * heightPx);
                 int childWidth = (int) (child.getWidth() * widthPx);
                 int childHeight = (int) (child.getHeight() * heightPx);
 
-                // Translate graphics context to child's position
                 g2.translate(childX, childY);
 
-                // Set a clip region to prevent child from drawing outside its bounds
                 g2.setClip(0, 0, childWidth, childHeight);
 
-                // Temporarily update child's dimensions for rendering
                 int oldWidthPx = child.widthPx;
                 int oldHeightPx = child.heightPx;
                 child.widthPx = childWidth;
                 child.heightPx = childHeight;
 
-                // Recursively print the child (which will print its children too)
                 child.print(g2);
 
-                // Restore child's original dimensions
                 child.widthPx = oldWidthPx;
                 child.heightPx = oldHeightPx;
 
-                // Dispose of the graphics context
                 g2.dispose();
             }
         }
     }
+
     @SuppressWarnings("unchecked")
     protected <E extends Event> void propagateEvent(E event, double mouseX, double mouseY) {
-        // Create a copy to avoid ConcurrentModificationException
         List<GUIComponent> childrenCopy = new ArrayList<>(children);
 
         for (GUIComponent child : childrenCopy) {
@@ -810,6 +866,8 @@ public abstract class GUIComponent implements Renderable {
 
         fireEvent(event);
     }
+    @Override
+    public void init(){markDirty();}
     public static Collection getGUIComponents(Window window){
         if (!GUIComponents.containsKey(window)) return null;
         return GUIComponents.get(window).values();

@@ -140,7 +140,7 @@ public class FileChooser extends Window {
             @Override
             public void invoke(long window, int button, int action, int mods) {
                 if (button == GLFW_MOUSE_BUTTON_1 && action == GLFW_PRESS) {
-                    Vector3f clickPos = getWorldCoordinatesFromScreen(mouseX, mouseY);
+                    Vector3f clickPos = getCursorWorldPosAtZ(0f);
                     int clickedIndex = -1;
 
                     // Find which icon was clicked
@@ -151,7 +151,7 @@ public class FileChooser extends Window {
                             break;
                         }
                     }
-                    Point2D mousePos = new Point2D.Double(mouseX*2,mouseY*2);
+                    Point2D mousePos = new Point2D.Double(mouseX,mouseY);
                     for (Object object: Objects.requireNonNull(GUIComponent.getGUIComponents(self))){
                         if (object instanceof GUIComponent) {
                             GUIComponent guiComponent = (GUIComponent) object;
@@ -209,6 +209,7 @@ public class FileChooser extends Window {
         MemoryUtil.memFree(fbHeight);
 
         GL.createCapabilities();
+        glfwSwapInterval(0);
         glClearColor(1f, 1f, 1f, 1f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -219,8 +220,13 @@ public class FileChooser extends Window {
         projectionMatrix = new Matrix4f().perspective(FOV, aspectRatio, Z_NEAR, Z_FAR);
 
         GLFW.glfwSetCursorPosCallback(window, ((windowHandle, xpos, ypos) -> {
-            mouseX = xpos;
-            mouseY = ypos;
+
+            float[] sx = new float[1];
+            float[] sy = new float[1];
+            glfwGetWindowContentScale(windowHandle, sx, sy);
+
+            mouseX = xpos * sx[0];
+            mouseY = ypos * sy[0];
             CursorPosCallbacks.forEach(c -> c.invoke(windowHandle, xpos, ypos));
         }));
 
@@ -241,11 +247,18 @@ public class FileChooser extends Window {
                     updateHighlight();
                 }
                 // Arrow key navigation through files
-                else if (key == GLFW_KEY_DOWN && !fileChooserIcons.isEmpty()) {
+                else if (key == GLFW_KEY_DOWN && !fileChooserIcons.isEmpty() && !fileNameTextField.isFocused()) {
+                    selection = Math.min(selection + 4, fileChooserIcons.size() - 1);
+                    if (selection < 0) selection = 0;
+                    updateSelectionTextField();
+                } else if (key == GLFW_KEY_UP && !fileChooserIcons.isEmpty()&& !fileNameTextField.isFocused()) {
+                    selection = Math.max(selection - 4, 0);
+                    updateSelectionTextField();
+                }else if (key == GLFW_KEY_RIGHT && !fileChooserIcons.isEmpty()&& !fileNameTextField.isFocused()) {
                     selection = Math.min(selection + 1, fileChooserIcons.size() - 1);
                     if (selection < 0) selection = 0;
                     updateSelectionTextField();
-                } else if (key == GLFW_KEY_UP && !fileChooserIcons.isEmpty()) {
+                } else if (key == GLFW_KEY_LEFT && !fileChooserIcons.isEmpty()&& !fileNameTextField.isFocused()) {
                     selection = Math.max(selection - 1, 0);
                     updateSelectionTextField();
                 } else if (key == GLFW_KEY_ENTER && selection >= 0 && selection < fileChooserIcons.size()) {
@@ -265,7 +278,7 @@ public class FileChooser extends Window {
 
         GLFW.glfwSetScrollCallback(window, (windowHandle, xoffset, yoffset) -> {
             for (GLFWScrollCallback callback : ScrollCallbacks) callback.invoke(windowHandle, xoffset, yoffset);
-            Point2D mousePos = new Point2D.Double(mouseX*2,mouseY*2);
+            Point2D mousePos = new Point2D.Double(mouseX,mouseY);
             for (Object object: Objects.requireNonNull(GUIComponent.getGUIComponents(self))){
                 if (object instanceof GUIComponent) {
                     GUIComponent guiComponent = (GUIComponent) object;
@@ -398,11 +411,11 @@ public class FileChooser extends Window {
                         suggestionLabel
                                 .setCornerRadius(12)
                                 .setBaseFont(SnowMemo.currentTheme.getFonts()[0].deriveFont(Font.PLAIN, 16f))
-                                .setPadding(10)
                                 .setWidth(1.0f)
                                 .setHeight(0.15f);
                         suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200));
                         suggestionLabel.setTextColor(new Color(33, 37, 41));
+                        suggestionLabel.setAutoResizeMode(Label.AutoResizeMode.FIT_HEIGHT);
                         suggestionLabel.addCallBack((MouseEnterCallBack) _ -> suggestionLabel.setBackgroundColor(new Color(230, 240, 255)));
                         suggestionLabel.addCallBack((MouseExitCallBack) _ -> suggestionLabel.setBackgroundColor(new Color(245, 245, 245, 200)));
                         if (suggestionLabels.size() == selectedSuggestionIndex) {
@@ -418,7 +431,7 @@ public class FileChooser extends Window {
                     }
                     if (file.getName().toLowerCase(Locale.ROOT).equals(fileNameTextField.getText().toLowerCase(Locale.ROOT))) {
                         fileNameTextField.setText(file.getName());
-                        selection = i;
+                        selection = i+1;
                     }
                 }
                 suggestionsFrame.setVisible(true);
@@ -614,7 +627,10 @@ public class FileChooser extends Window {
                         throw new RuntimeException(e);
                     }
                 }
-                if (homeIcon!=null) g.drawImage(homeIcon,0,0,widthPx,heightPx,null);
+                if (homeIcon!=null) {
+                    System.out.println("RENDERED");
+                    g.drawImage(homeIcon,0,0,widthPx,heightPx,null);
+                }
             }
 
             @Override
@@ -625,6 +641,14 @@ public class FileChooser extends Window {
         forwardHistoryButton.setParent(historyFrame);  // Add this
         backHistoryButton.setParent(historyFrame);      // Add this
         refreshHistoryButton.setParent(historyFrame);   // Add this
+        for (GUIComponent child : historyFrame.getChildren()) {
+            child.setZ_Index(100);
+        }
+        homeHistoryButton.setVisible(true);
+        backHistoryButton.setVisible(true);
+        forwardHistoryButton.setVisible(true);
+        refreshHistoryButton.setVisible(true);
+        historyFrame.setVisible(true);
         refreshHistoryButton.addCallBack(new MouseClickCallBack() {
             @Override
             public void onEvent(MouseClickEvent e) {
@@ -695,24 +719,34 @@ public class FileChooser extends Window {
         }
     }
     public void render() {
+        PerformanceProfiler.startFrame();
+
+        PerformanceProfiler.start("Tween Update");
         long currentUpdate = System.nanoTime();
         float deltaTime = (currentUpdate - lastUpdate) / 1_000_000_000.0f;
         lastUpdate = currentUpdate;
         tweenManager.update(deltaTime);
+        PerformanceProfiler.end("Tween Update");
+
         long oldContext = GLFW.glfwGetCurrentContext();
         if (GLFW.glfwWindowShouldClose(oldContext)) {
             this.close();
             return;
         }
         GLFW.glfwMakeContextCurrent(this.window);
+
+        PerformanceProfiler.start("Shadow Map Setup");
         shadowMap.setOrthoBounds(new ShadowMap.OrthoBounds(100f, 0.1f, 100f));
         shadowMap.setShadowDistance(100f);
-        Vector3f sceneCenter = new Vector3f(0f, 0f, 0); // Middle between baseplate and cubes
+        Vector3f sceneCenter = new Vector3f(0f, 0f, 0);
+        PerformanceProfiler.end("Shadow Map Setup");
 
-        shadowMap.render(this , Mesh.getAllMeshes(this), sceneCenter);
+        PerformanceProfiler.start("Shadow Map Render");
+        shadowMap.render(this, Mesh.getAllMeshes(this), sceneCenter);
         Matrix4f lightSpaceMatrix = shadowMap.getLightSpaceMatrix();
+        PerformanceProfiler.end("Shadow Map Render");
 
-        // Set light space matrix for all meshes before rendering
+        PerformanceProfiler.start("Shader Setup");
         try {
             Mesh.sharedShaderProgram.bind();
             if (!Mesh.sharedShaderProgram.hasUniform("lightSpaceMatrix")) {
@@ -723,7 +757,10 @@ public class FileChooser extends Window {
         } catch (Exception e) {
             System.err.println("Error setting light space matrix: " + e.getMessage());
         }
-        glViewport(0,0,width,height);
+        PerformanceProfiler.end("Shader Setup");
+
+        PerformanceProfiler.start("GL Setup");
+        glViewport(0, 0, width, height);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         glFrontFace(GL_CCW);
@@ -738,10 +775,13 @@ public class FileChooser extends Window {
         projectionMatrix = new Matrix4f().perspective(45f, aspectRatio, Z_NEAR, Z_FAR);
 
         glClear(GL11.GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        PerformanceProfiler.end("GL Setup");
 
-        // 1. Render background first
+        PerformanceProfiler.start("Background Render");
         backgroundCube.render(camera);
+        PerformanceProfiler.end("Background Render");
 
+        PerformanceProfiler.start("Frustum Culling");
         Frustum frustum = new Frustum();
         Matrix4f projView = new Matrix4f(projectionMatrix).mul(camera.getViewMatrix());
         frustum.update(projView);
@@ -749,9 +789,14 @@ public class FileChooser extends Window {
         for (FileChooserIcon f : fileChooserIcons) {
             if (f.mesh != null) {
                 f.mesh.updateCulling(frustum);
-                f.billboardGUI.updateCulling(frustum);
+                if (f.billboardGUI != null) {
+                    f.billboardGUI.updateCulling(frustum);
+                }
             }
         }
+        PerformanceProfiler.end("Frustum Culling");
+
+        PerformanceProfiler.start("Selection Update");
         if (!fileChooserIcons.isEmpty() && selection >= 0 && selection < fileChooserIcons.size()) {
             Vector3f iconPos = fileChooserIcons.get(selection).mesh.getPosition();
             Vector3f targetPos = new Vector3f(iconPos.x - 0.025f, iconPos.y - 0.15f, iconPos.z + 0.1f);
@@ -762,20 +807,38 @@ public class FileChooser extends Window {
             selectionMesh.setVisible(false);
         }
         selectionMesh.setVisible(!fileChooserIcons.isEmpty());
-        // 4. Render the file icons
+        PerformanceProfiler.end("Selection Update");
+
+        PerformanceProfiler.start("FileIcons Rendering");
+        int renderedCount = 0;
         for (FileChooserIcon fileChooserIcon : fileChooserIcons) {
-            if (fileChooserIcon.mesh.isRenderVisible()) { // Check visibility first
+            if (fileChooserIcon.mesh.isRenderVisible()) {
                 fileChooserIcon.render();
+                renderedCount++;
             }
         }
+        PerformanceProfiler.end("FileIcons Rendering");
 
+        PerformanceProfiler.start("Selection Mesh");
         selectionMesh.updateCulling(frustum);
         selectionMesh.render(camera);
-        // 5. Render GUI on top
-        GUIComponent.renderGUIs(this);
+        PerformanceProfiler.end("Selection Mesh");
 
+        PerformanceProfiler.start("GUI Rendering");
+        GUIComponent.renderGUIs(this);
+        PerformanceProfiler.end("GUI Rendering");
+
+        PerformanceProfiler.start("Buffer Swap");
         GLFW.glfwSwapBuffers(window);
+        PerformanceProfiler.end("Buffer Swap");
+
         GLFW.glfwMakeContextCurrent(oldContext);
+        PerformanceProfiler.endFrame();
+
+        if (fps % 120 == 0) { // Print every 2 seconds
+            PerformanceProfiler.printReportFile();
+            System.out.println("Rendered " + renderedCount + " / " + fileChooserIcons.size() + " icons");
+        }
         fps++;
     }
     public void update() {
@@ -799,21 +862,26 @@ public class FileChooser extends Window {
     }
     LoadingWindow creationOfFilesAndFoldersLoadingWindow;
     public void createFilesAndFolders(){
-        if (creationOfFilesAndFoldersLoadingWindow==null) creationOfFilesAndFoldersLoadingWindow =  new LoadingWindow(window,200,100);;
+        if (creationOfFilesAndFoldersLoadingWindow==null) {
+            creationOfFilesAndFoldersLoadingWindow = new LoadingWindow(window,200,100);
+        }
+
         resetCamera();
         fileHistory.add(fileHistory.size(), currentDirectory);
         scroll = MIN_SCROLL;
-
         selection = 0;
+
         creationOfFilesAndFoldersLoadingWindow.setMaxValue(fileChooserIcons.size());
         creationOfFilesAndFoldersLoadingWindow.setValue(0);
         creationOfFilesAndFoldersLoadingWindow.setDescription("Unloading files and folders...");
         creationOfFilesAndFoldersLoadingWindow.show();
+
         for (FileChooserIcon icon : fileChooserIcons) {
             if (icon.mesh != null) {
                 icon.mesh.cleanUp();
-                icon.billboardGUI.cleanUp();
-                creationOfFilesAndFoldersLoadingWindow.render();
+                if (icon.billboardGUI != null) {
+                    icon.billboardGUI.cleanUp();
+                }
                 creationOfFilesAndFoldersLoadingWindow.setValue(creationOfFilesAndFoldersLoadingWindow.getValue()+1);
             }
         }
@@ -823,14 +891,14 @@ public class FileChooser extends Window {
         File[] allFiles = currentDirectory.listFiles();
         List<File> files = Arrays.stream(allFiles)
                 .sorted(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER))
-                .filter(file->{return !file.isHidden();})
+                .filter(file -> !file.isHidden())
                 .toList();
 
         int columns = 4;
         float spacing = 1.25f;
-        int rows = 0;
         int visibleIndex = 0;
-        if (currentDirectory.getParent()!=null) {
+
+        if (currentDirectory.getParent() != null) {
             ReturnFolderIcon returnFolderIcon = new ReturnFolderIcon(new File(currentDirectory.getParent()));
             int col = visibleIndex % columns;
             int row = visibleIndex / columns;
@@ -844,10 +912,12 @@ public class FileChooser extends Window {
             fileChooserIcons.add(returnFolderIcon);
             visibleIndex++;
         }
+
         creationOfFilesAndFoldersLoadingWindow.setDescription("Loading files and folders...");
         creationOfFilesAndFoldersLoadingWindow.setMaxValue(files.size());
         creationOfFilesAndFoldersLoadingWindow.setValue(0);
         creationOfFilesAndFoldersLoadingWindow.show();
+
         for (File file : files) {
             if (!file.isHidden()) {
                 FileChooserIcon fileChooserIcon;
@@ -868,13 +938,18 @@ public class FileChooser extends Window {
                         .setRotation(new Vector3f(0, (float) Math.PI * 1.5f, 0));
                 fileChooserIcons.add(fileChooserIcon);
                 visibleIndex++;
-                render();
-                creationOfFilesAndFoldersLoadingWindow.render();
-                creationOfFilesAndFoldersLoadingWindow.setValue(creationOfFilesAndFoldersLoadingWindow.getValue()+1);
-                System.out.println("creationOfFilesAndFoldersLoadingWindow.getValue() = " + creationOfFilesAndFoldersLoadingWindow.getValue());
+
+                // REMOVED: render(); // ← THIS WAS KILLING PERFORMANCE!
+                // REMOVED: creationOfFilesAndFoldersLoadingWindow.render();
+
+                // Update loading window every 10 files instead
+                if (visibleIndex % 10 == 0) {
+                    creationOfFilesAndFoldersLoadingWindow.setValue(creationOfFilesAndFoldersLoadingWindow.getValue() + 10);
+                }
             }
         }
-        rows = (visibleIndex + columns - 1) / columns;
+
+        int rows = (visibleIndex + columns - 1) / columns;
         int actualRows = rows;
         MAX_SCROLL = Math.max(MIN_SCROLL, (int) (Math.max(0, actualRows - 3) * 1.5f) + 1);
         float lowerOffset = spacing * Math.max(0, actualRows - 4) / 3;
@@ -890,6 +965,7 @@ public class FileChooser extends Window {
         previousDirectory = currentDirectory;
         creationOfFilesAndFoldersLoadingWindow.hide();
     }
+
     MouseClickCallBack cancelMouseClickCallback;
     public File chooseFile() {
         if (cancelMouseClickCallback != null) {
@@ -1031,8 +1107,58 @@ public class FileChooser extends Window {
         }
 
         Vector3f worldPosition = new Vector3f(rayStart).add(new Vector3f(rayDirection).mul(t));
-        // NOTE: do NOT multiply coordinates by 2 here — that caused the offset/scale.
         return worldPosition;
+    }
+    public Vector3f getCursorWorldPosAtZ(float planeZ) {
+        // --- 1) Get window size and framebuffer size
+        int[] winW = new int[1], winH = new int[1];
+        int[] fbW  = new int[1], fbH  = new int[1];
+        glfwGetWindowSize(window, winW, winH);
+        glfwGetFramebufferSize(window, fbW, fbH);
+
+        if (winW[0] == 0 || winH[0] == 0) return new Vector3f(0, 0, planeZ);
+
+        // --- 2) Convert cursor to framebuffer coords (HiDPI aware)
+        float fbX = (float) mouseX;
+        float fbY = (float) mouseY;
+
+        // --- 3) Convert to NDC (-1..1)
+        float ndcX = (2.0f * fbX) / fbW[0] - 1.0f;
+        float ndcY = 1.0f - (2.0f * fbY) / fbH[0]; // flip Y for OpenGL
+
+        // --- 4) Clip-space positions for near & far
+        Vector4f clipNear = new Vector4f(ndcX, ndcY, -1f, 1f);
+        Vector4f clipFar  = new Vector4f(ndcX, ndcY,  1f, 1f);
+
+        // --- 5) Inverse view-projection
+        Matrix4f invViewProj = new Matrix4f(getProjectionMatrix()).mul(camera.getViewMatrix()).invert();
+
+        // --- 6) Transform clip -> world
+        Vector4f worldNear4 = new Vector4f(clipNear).mul(invViewProj);
+        Vector4f worldFar4  = new Vector4f(clipFar).mul(invViewProj);
+        if (worldNear4.w != 0f) worldNear4.div(worldNear4.w);
+        if (worldFar4.w  != 0f) worldFar4.div(worldFar4.w);
+
+        Vector3f rayStart = new Vector3f(worldNear4.x, worldNear4.y, worldNear4.z);
+        Vector3f rayEnd   = new Vector3f(worldFar4.x,  worldFar4.y,  worldFar4.z);
+
+        // --- 7) Build ray
+        Vector3f rayDir = new Vector3f(rayEnd).sub(rayStart).normalize();
+
+        // --- 8) Intersect ray with plane Z = planeZ
+        float denom = rayDir.z;
+        if (Math.abs(denom) < 1e-6f) {
+            // Parallel → just return ray start projected onto plane
+            return new Vector3f(rayStart.x, rayStart.y, planeZ);
+        }
+
+        float t = (planeZ - rayStart.z) / denom;
+        if (t < 0f) {
+            // Intersection behind camera → fallback
+            return new Vector3f(rayStart.x, rayStart.y, planeZ);
+        }
+
+        return new Vector3f(rayStart).fma(t, rayDir); // rayStart + t * rayDir
     }
     public static FileChooser getCurrentFileChooser() {
         return currentFileChooser;
@@ -1076,7 +1202,7 @@ public class FileChooser extends Window {
             }
             this.mesh.setMaterial(Utils.loadMaterial(FileChooser.class,"Folder.mtl","Material"));
             this.file = file;
-            this.guiComponent = new GUIComponent(currentFileChooser, 0.1f, 0.1f) {
+            this.guiComponent = new GUIComponent(currentFileChooser, 256, 256) {
                 @Override
                 protected void paintComponent(Graphics g) {
                     if (cachedImage != null && widthPx == cachedImage.getWidth() && heightPx == cachedImage.getHeight()) {
@@ -1092,7 +1218,6 @@ public class FileChooser extends Window {
                 @Override
                 public void init() { }
             };
-
             billboardGUI = new BillboardGUI(currentFileChooser, guiComponent);
             billboardGUI.setMaterial(new Mesh.Material(
                     new Vector4f(255, 255, 255, 255),
@@ -1100,6 +1225,13 @@ public class FileChooser extends Window {
                     new Vector4f(0, 0, 0, 0),
                     32f
             ));
+            billboardGUI.setMaxTextureSize(32, 32);      // Even lower for more FPS
+            billboardGUI.setUpdateInterval(150);            // Update less frequently
+            billboardGUI.setSkipUpdateWhenFar(true);        // Skip updates when far
+            billboardGUI.setMaxUpdateDistance(30.0f);       // Adjust based on your scene
+
+// Monitor performance
+            billboardGUI.setEnableTimingLogs(true);
         }
 
         protected void createCachedImage(int width, int height) {
@@ -1173,7 +1305,7 @@ public class FileChooser extends Window {
             ));
             billboardGUI.setRotation(new Vector3f(0, (float) Math.PI, (float) Math.PI));
 
-            float baseScale = 0.15f;
+            float baseScale = 0.75f;
             billboardGUI.setScale(new Vector3f(baseScale * aspect, baseScale, baseScale - 0.125f));
 
             // Render billboard

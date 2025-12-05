@@ -2,6 +2,8 @@ package GUI;
 
 import GUI.Events.EventCallBack;
 import GUI.Events.MouseClickEvent;
+import Main.PerformanceProfiler;
+import Main.Settings.Settings;
 import Main.Window;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
@@ -10,6 +12,8 @@ import org.lwjgl.glfw.GLFWScrollCallback;
 
 import java.awt.*;
 import java.awt.geom.Point2D;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -26,6 +30,7 @@ public class ScrollableFrame extends GUIComponent {
     private static final int SCROLL_SPEED = 20;
     private static final int CONTENT_PADDING = 10;
     private static final float SMOOTH_SCROLL_FACTOR = 0.3f;
+    private static final int CULLING_MARGIN = 50; // Extra pixels for smoother scrolling
 
     private static final Color SCROLLBAR_TRACK_COLOR = new Color(240, 240, 240);
     private static final Color SCROLLBAR_THUMB_COLOR = new Color(180, 180, 180);
@@ -62,14 +67,25 @@ public class ScrollableFrame extends GUIComponent {
     private Color progressColor = new Color(100, 150, 255);
     private int progressBarHeight = 3;
 
+    // Performance optimization caches
+    private int lastScrollY = -1;
+    private int lastScrollX = -1;
+    private int lastViewportWidth = -1;
+    private int lastViewportHeight = -1;
+    private boolean dimensionsChanged = true;
+    private long lastContentUpdate = 0;
+    private static final long CONTENT_UPDATE_THROTTLE_MS = 16; // ~60fps max update rate
+
     private GLFWScrollCallback scrollCallback;
     private GLFWMouseButtonCallback mouseButtonCallback;
     private GLFWCursorPosCallback cursorPosCallback;
+
     @SuppressWarnings("unused")
     public ScrollableFrame(Window window) {
         super(window);
         init();
     }
+
     @SuppressWarnings("unused")
     public ScrollableFrame(Window window, float width, float height) {
         super(window, width, height);
@@ -81,12 +97,203 @@ public class ScrollableFrame extends GUIComponent {
         init();
     }
 
+    @Override
     public void init() {
         setupScrollCallback();
         setupMouseButtonCallback();
         setupCursorPosCallback();
         targetScrollY = scrollY;
         targetScrollX = scrollX;
+    }
+
+    @Override
+    public void render() {
+        if (!visible) return;
+
+        // 1. Calculate Screen Positions
+        int oldWidthPx = widthPx;
+        int oldHeightPx = heightPx;
+
+        if (parent != null) {
+            widthPx = (int) (parent.getWidthPx() * width);
+            heightPx = (int) (parent.getHeightPx() * height);
+            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
+            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
+        } else {
+            widthPx = (int) (windowParent.getWidth() * width);
+            heightPx = (int) (windowParent.getHeight() * height);
+            xPx = (int) (windowParent.getWidth() * x);
+            yPx = (int) (windowParent.getHeight() * y);
+        }
+
+        dimensionsChanged = (oldWidthPx != widthPx || oldHeightPx != heightPx);
+        updateHitBox();
+
+        // 2. Only mark dirty if something actually changed
+        if (dimensionsChanged || scrollY != lastScrollY || scrollX != lastScrollX) {
+            markDirty();
+            lastScrollY = scrollY;
+            lastScrollX = scrollX;
+        }
+
+        // 3. Setup OpenGL State
+        boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+        if (wasDepthTestEnabled) glDisable(GL_DEPTH_TEST);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // 4. Draw the internal AWT image to the screen
+        renderGUIImage();
+
+        // 5. Cleanup
+        glDisable(GL_BLEND);
+        if (wasDepthTestEnabled) glEnable(GL_DEPTH_TEST);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        if (getWidthPx() <= 1 || getHeightPx() <= 1) {
+            return;
+        }
+
+        // Throttle content updates to improve performance
+        long currentTime = System.currentTimeMillis();
+        boolean shouldUpdateContent = (currentTime - lastContentUpdate) > CONTENT_UPDATE_THROTTLE_MS;
+
+        if (autoUpdateContent && (dimensionsChanged || shouldUpdateContent)) {
+            updateContentSize();
+            updateScrollbarVisibility();
+            lastContentUpdate = currentTime;
+        }
+
+        if (smoothScrollEnabled) {
+            applySmoothScroll();
+        }
+
+        Graphics2D g2 = (Graphics2D) g.create();
+        if (Settings.getValue("SnowMemo.Defaults.AntiAliasing") != null &&
+                (boolean)Settings.getValue("SnowMemo.Defaults.AntiAliasing")) {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        }
+        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_SPEED);
+        g2.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_SPEED);
+
+        int viewportWidth = getViewportWidth();
+        int viewportHeight = getViewportHeight();
+
+        // Draw Background
+        g2.setColor(backgroundColor);
+        if (cornerRadius > 0) {
+            g2.fillRoundRect(0, 0, viewportWidth, viewportHeight, cornerRadius, cornerRadius);
+        } else {
+            g2.fillRect(0, 0, viewportWidth, viewportHeight);
+        }
+
+        // Setup Clipping for children
+        Shape oldClip = g2.getClip();
+        if (cornerRadius > 0) {
+            g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, viewportWidth, viewportHeight, cornerRadius, cornerRadius));
+        } else {
+            g2.clipRect(0, 0, viewportWidth, viewportHeight);
+        }
+
+        g2.translate(-scrollX, -scrollY);
+        renderChildren(g2);
+        g2.translate(scrollX, scrollY);
+
+        g2.setClip(oldClip);
+
+        // Draw Border
+        if (showBorder) {
+            drawBorder(g2, viewportWidth, viewportHeight);
+        }
+
+        if (verticalScrollbarVisible) drawVerticalScrollbar(g2, viewportWidth, viewportHeight);
+        if (horizontalScrollbarVisible) drawHorizontalScrollbar(g2, viewportWidth, viewportHeight);
+        if (showScrollProgress && verticalScrollbarVisible) drawScrollProgress(g2, viewportWidth, viewportHeight);
+
+        g2.dispose();
+    }
+
+    private void drawBorder(Graphics2D g2, int viewportWidth, int viewportHeight) {
+        Stroke s = g2.getStroke();
+        g2.setColor(borderColor);
+        g2.setStroke(new BasicStroke(borderThickness));
+        float half = borderThickness / 2f;
+        if (cornerRadius > 0) {
+            g2.drawRoundRect(
+                    (int)half, (int)half,
+                    (int)(viewportWidth - borderThickness),
+                    (int)(viewportHeight - borderThickness),
+                    cornerRadius, cornerRadius
+            );
+        } else {
+            g2.drawRect((int)half, (int)half,
+                    (int)(viewportWidth - borderThickness),
+                    (int)(viewportHeight - borderThickness));
+        }
+        g2.setStroke(s);
+    }
+
+    private void renderChildren(Graphics2D g2) {
+        if (getChildren() == null || getChildren().isEmpty()) return;
+
+        int contentAreaWidth = getWidthPx();
+        int contentAreaHeight = getHeightPx();
+
+        if (contentAreaWidth <= 0 || contentAreaHeight <= 0) return;
+
+        int viewportHeight = getViewportHeight();
+        int viewportWidth = getViewportWidth();
+
+        // Pre-calculate scroll bounds with margin for better culling
+        int scrollTop = scrollY - CULLING_MARGIN;
+        int scrollBottom = scrollY + viewportHeight + CULLING_MARGIN;
+        int scrollLeft = scrollX - CULLING_MARGIN;
+        int scrollRight = scrollX + viewportWidth + CULLING_MARGIN;
+
+        synchronized (getChildren()) {
+            // Avoid creating new ArrayList if possible
+            List<GUIComponent> children = new ArrayList<>(getChildren());
+            for (GUIComponent child : children) {
+                if (child == null || !child.isVisible()) continue;
+
+                child.threadRendering = false;
+
+                // Calculate child bounds
+                int childWidth = (int) (child.getWidth() * contentAreaWidth);
+                int childHeight = (int) (child.getHeight() * contentAreaHeight);
+                int childX = (int) (child.getX() * contentAreaWidth);
+                int childY = (int) (child.getY() * contentAreaHeight);
+
+                // Optimized culling check
+                if (childY + childHeight < scrollTop || childY > scrollBottom) continue;
+                if (childX + childWidth < scrollLeft || childX > scrollRight) continue;
+
+                // Save old dimensions
+                int oldW = child.widthPx;
+                int oldH = child.heightPx;
+
+                // Ensure minimum dimensions
+                child.widthPx = Math.max(1, childWidth);
+                child.heightPx = Math.max(1, childHeight);
+
+                Graphics2D childGraphics = (Graphics2D) g2.create();
+                childGraphics.translate(childX, childY);
+
+                try {
+                    child.print(childGraphics);
+                } catch (Exception e) {
+                    System.err.println("Error rendering child in ScrollableFrame: " + e.getMessage());
+                } finally {
+                    childGraphics.dispose();
+                    // Restore dimensions
+                    child.widthPx = oldW;
+                    child.heightPx = oldH;
+                }
+            }
+        }
     }
 
     private void setupScrollCallback() {
@@ -119,11 +326,13 @@ public class ScrollableFrame extends GUIComponent {
         if (getWindowParent() != null && getWindowParent().MouseButtonCallbacks != null)
             getWindowParent().MouseButtonCallbacks.add(mouseButtonCallback);
     }
+
     private void handleScroll(double xoffset, double yoffset) {
-        Point2D mousePos = new Point2D.Double(getMousePos(getWindowParent()).getX()*2,getMousePos(getWindowParent()).getY()*2);
+        Point2D mousePos = new Point2D.Double(getMousePos(getWindowParent()).getX() * 2, getMousePos(getWindowParent()).getY() * 2);
         if (mousePos == null || !hitBox.contains(mousePos)) return;
+
         if (verticalScrollbarVisible && yoffset != 0) {
-            int newScroll = scrollY - (int)(yoffset * scrollSpeed);
+            int newScroll = scrollY - (int) (yoffset * scrollSpeed);
             if (smoothScrollEnabled) {
                 targetScrollY = Math.max(0, Math.min(getMaxScrollY(), newScroll));
             } else {
@@ -133,7 +342,7 @@ public class ScrollableFrame extends GUIComponent {
 
         if (horizontalScrollbarVisible && (xoffset != 0 || (!verticalScrollbarVisible && yoffset != 0))) {
             double scrollAmount = xoffset != 0 ? xoffset : yoffset;
-            int newScroll = scrollX + (int)(scrollAmount * scrollSpeed);
+            int newScroll = scrollX + (int) (scrollAmount * scrollSpeed);
             if (smoothScrollEnabled) {
                 targetScrollX = Math.max(0, Math.min(getMaxScrollX(), newScroll));
             } else {
@@ -186,7 +395,7 @@ public class ScrollableFrame extends GUIComponent {
             int trackHeight = getViewportHeight() - verticalThumbBounds.height;
             if (trackHeight > 0) {
                 int maxScroll = getMaxScrollY();
-                int newScroll = dragStartScrollY + (int)((double)deltaY / trackHeight * maxScroll);
+                int newScroll = dragStartScrollY + (int) ((double) deltaY / trackHeight * maxScroll);
                 scrollY = Math.max(0, Math.min(maxScroll, newScroll));
                 targetScrollY = scrollY;
             }
@@ -197,7 +406,7 @@ public class ScrollableFrame extends GUIComponent {
             int trackWidth = getViewportWidth() - horizontalThumbBounds.width;
             if (trackWidth > 0) {
                 int maxScroll = getMaxScrollX();
-                int newScroll = dragStartScrollX + (int)((double)deltaX / trackWidth * maxScroll);
+                int newScroll = dragStartScrollX + (int) ((double) deltaX / trackWidth * maxScroll);
                 scrollX = Math.max(0, Math.min(maxScroll, newScroll));
                 targetScrollX = scrollX;
             }
@@ -206,22 +415,22 @@ public class ScrollableFrame extends GUIComponent {
 
     private void handleChildMousePress(int button) {
         if (!visible) return;
-        Point2D mousePos = new Point((int) getMousePos(getWindowParent()).getX()*2, (int) getMousePos(getWindowParent()).getY()*2);
+        Point2D mousePos = new Point((int) getMousePos(getWindowParent()).getX() * 2, (int) getMousePos(getWindowParent()).getY() * 2);
 
         if (!hitBox.contains(mousePos)) return;
         if (verticalScrollbarVisible && verticalTrackBounds.contains(mousePos)) return;
         if (horizontalScrollbarVisible && horizontalTrackBounds.contains(mousePos)) return;
 
-        int adjustedMouseX = (int)(mousePos.getX() - xPx + scrollX);
-        int adjustedMouseY = (int)(mousePos.getY() - yPx + scrollY);
+        int adjustedMouseX = (int) (mousePos.getX() - xPx + scrollX);
+        int adjustedMouseY = (int) (mousePos.getY() - yPx + scrollY);
 
         for (GUIComponent child : getChildren()) {
             if (child == null || !child.isVisible()) continue;
 
-            int childX = (int)(child.getX() * getWidthPx());
-            int childY = (int)(child.getY() * getHeightPx());
-            int childWidth = (int)(child.getWidth() * getWidthPx());
-            int childHeight = (int)(child.getHeight() * getHeightPx());
+            int childX = (int) (child.getX() * getWidthPx());
+            int childY = (int) (child.getY() * getHeightPx());
+            int childWidth = (int) (child.getWidth() * getWidthPx());
+            int childHeight = (int) (child.getHeight() * getHeightPx());
 
             if (adjustedMouseX >= childX && adjustedMouseX <= childX + childWidth &&
                     adjustedMouseY >= childY && adjustedMouseY <= childY + childHeight) {
@@ -247,108 +456,19 @@ public class ScrollableFrame extends GUIComponent {
         }
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        if (autoUpdateContent) {
-            updateContentSize();
-            updateScrollbarVisibility();
-        }
-        if (smoothScrollEnabled) {
-            applySmoothScroll();
-        }
-
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        int viewportWidth = getViewportWidth();
-        int viewportHeight = getViewportHeight();
-
-        g2.setColor(backgroundColor);
-        if (cornerRadius > 0) {
-            g2.fillRoundRect(0, 0, getWidthPx(), getHeightPx(), cornerRadius, cornerRadius);
-        } else {
-            g2.fillRect(0, 0, getWidthPx(), getHeightPx());
-        }
-
-        Shape oldClip = g2.getClip();
-        if (cornerRadius > 0) {
-            g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, viewportWidth, viewportHeight, cornerRadius, cornerRadius));
-        } else {
-            g2.clipRect(0, 0, viewportWidth, viewportHeight);
-        }
-        g2.translate(-scrollX, -scrollY);
-        renderChildren(g2);
-        g2.translate(scrollX, scrollY);
-        g2.setClip(oldClip);
-        if (showBorder) {
-            Stroke s = g2.getStroke();
-            g2.setColor(borderColor);
-            g2.setStroke(new BasicStroke(borderThickness));
-            float half = borderThickness / 2f;
-            if (cornerRadius > 0) {
-                g2.drawRoundRect(
-                        Math.round(half),
-                        Math.round(half),
-                        Math.round(getWidthPx() - borderThickness),
-                        Math.round(getHeightPx() - borderThickness),
-                        cornerRadius,
-                        cornerRadius
-                );
-            } else {
-                g2.drawRect(Math.round(half),
-                        Math.round(half),
-                        Math.round(getWidthPx() - borderThickness),
-                        Math.round(getHeightPx() - borderThickness));
-            }
-            g2.setStroke(s);
-        }
-        if (verticalScrollbarVisible) drawVerticalScrollbar(g2, viewportWidth-15, viewportHeight);
-        if (horizontalScrollbarVisible) drawHorizontalScrollbar(g2, viewportWidth, viewportHeight);
-        if (showScrollProgress && verticalScrollbarVisible) drawScrollProgress(g2, viewportWidth, viewportHeight);
-
-        g2.dispose();
-    }
-
     private void applySmoothScroll() {
         if (scrollY != targetScrollY) {
             int diff = targetScrollY - scrollY;
-            int delta = (int)(diff * SMOOTH_SCROLL_FACTOR);
+            int delta = (int) (diff * SMOOTH_SCROLL_FACTOR);
             if (Math.abs(diff) < 2) scrollY = targetScrollY;
             else scrollY += Math.max(1, Math.abs(delta)) * Integer.signum(delta);
         }
 
         if (scrollX != targetScrollX) {
             int diff = targetScrollX - scrollX;
-            int delta = (int)(diff * SMOOTH_SCROLL_FACTOR);
+            int delta = (int) (diff * SMOOTH_SCROLL_FACTOR);
             if (Math.abs(diff) < 2) scrollX = targetScrollX;
             else scrollX += Math.max(1, Math.abs(delta)) * Integer.signum(delta);
-        }
-    }
-
-    private void renderChildren(Graphics2D g2) {
-        if (getChildren() == null) return;
-        int contentAreaWidth = getWidthPx();
-        int contentAreaHeight = getHeightPx();
-        synchronized (getChildren()) {
-            for (GUIComponent child : getChildren()) {
-                if (child != null && child.isVisible()) {
-                    child.threadRendering = false;
-                    int childWidth = (int) (child.getWidth() * contentAreaWidth);
-                    int childHeight = (int) (child.getHeight() * contentAreaHeight);
-                    int childX = (int) (child.getX() * contentAreaWidth);
-                    int childY = (int) (child.getY() * contentAreaHeight);
-
-                    if (childY + childHeight < scrollY || childY > scrollY + getViewportHeight()) continue;
-                    if (childX + childWidth < scrollX || childX > scrollX + getViewportWidth()) continue;
-
-                    Graphics2D childGraphics = (Graphics2D) g2.create();
-                    childGraphics.translate(childX, childY);
-                    child.widthPx = (int) (this.widthPx * child.width);
-                    child.heightPx = (int) (this.heightPx * child.height);
-                    child.print(childGraphics);
-                    childGraphics.dispose();
-                }
-            }
         }
     }
 
@@ -360,15 +480,13 @@ public class ScrollableFrame extends GUIComponent {
         verticalTrackBounds.setBounds(getxPx() + viewWidth, getyPx() + y, width, height);
         g2d.setColor(SCROLLBAR_TRACK_COLOR);
         g2d.fillRect(viewWidth, y, width, height);
-//        g2d.setColor(Color.BLACK);
-//        g2d.drawRect(viewWidth,y,width,height);
-//        System.out.println("viewWidth = " + viewWidth);
+
         int maxScroll = getMaxScrollY();
         if (maxScroll > 0) {
-            int thumbHeight = Math.max(MIN_THUMB_SIZE, (int)((double)viewHeight / contentHeight * height));
+            int thumbHeight = Math.max(MIN_THUMB_SIZE, (int) ((double) viewHeight / contentHeight * height));
             thumbHeight = Math.min(thumbHeight, height - 4);
             int availableTrack = height - thumbHeight;
-            int thumbY = y + (availableTrack > 0 ? (int)((double)scrollY / maxScroll * availableTrack) : 0);
+            int thumbY = y + (availableTrack > 0 ? (int) ((double) scrollY / maxScroll * availableTrack) : 0);
 
             verticalThumbBounds.setBounds(getxPx() + viewWidth + 2, getyPx() + thumbY, width - 4, thumbHeight);
 
@@ -393,10 +511,10 @@ public class ScrollableFrame extends GUIComponent {
 
         int maxScroll = getMaxScrollX();
         if (maxScroll > 0) {
-            int thumbWidth = Math.max(MIN_THUMB_SIZE, (int)((double)viewWidth / contentWidth * width));
+            int thumbWidth = Math.max(MIN_THUMB_SIZE, (int) ((double) viewWidth / contentWidth * width));
             thumbWidth = Math.min(thumbWidth, width - 4);
             int availableTrack = width - thumbWidth;
-            int thumbX = x + (availableTrack > 0 ? (int)((double)scrollX / maxScroll * availableTrack) : 0);
+            int thumbX = x + (availableTrack > 0 ? (int) ((double) scrollX / maxScroll * availableTrack) : 0);
 
             horizontalThumbBounds.setBounds(getxPx() + thumbX, getyPx() + viewHeight + 2, thumbWidth, height - 4);
 
@@ -414,6 +532,7 @@ public class ScrollableFrame extends GUIComponent {
             g2d.fillRect(viewWidth, viewHeight, SCROLLBAR_WIDTH, height);
         }
     }
+
     @SuppressWarnings("unused")
     private void drawScrollProgress(Graphics2D g2d, int viewWidth, int viewHeight) {
         int maxScroll = getMaxScrollY();
@@ -442,13 +561,13 @@ public class ScrollableFrame extends GUIComponent {
 
             float childY = child.getY();
             float childH = child.getHeight();
-            int childBottom = (int)((childY + childH) * contentAreaHeight);
+            int childBottom = (int) ((childY + childH) * contentAreaHeight);
             contentHeight = Math.max(contentHeight, childBottom);
 
             if (enableHorizontalScroll) {
                 float childX = child.getX();
                 float childW = child.getWidth();
-                int childRight = (int)((childX + childW) * contentAreaWidth);
+                int childRight = (int) ((childX + childW) * contentAreaWidth);
                 contentWidth = Math.max(contentWidth, childRight);
             }
         }
@@ -505,6 +624,92 @@ public class ScrollableFrame extends GUIComponent {
         super.cleanUp();
     }
 
+    public void clearChildren() {
+        getChildren().clear();
+        nextChildY = 0f;
+        if (autoUpdateContent) {
+            updateContentSize();
+            updateScrollbarVisibility();
+        }
+    }
+
+    private void setupCursorPosCallback() {
+        cursorPosCallback = new GLFWCursorPosCallback() {
+            @Override
+            public void invoke(long windowHandle, double xpos, double ypos) {
+                handleMouseDrag((int) xpos, (int) ypos);
+                handleChildMouseMove((int) xpos, (int) ypos);
+            }
+        };
+        if (getWindowParent() != null && getWindowParent().CursorPosCallbacks != null)
+            getWindowParent().CursorPosCallbacks.add(cursorPosCallback);
+    }
+
+    private void handleChildMouseMove(int mouseX, int mouseY) {
+        if (!visible) return;
+        Point2D mousePos = new Point(mouseX * 2, mouseY * 2);
+
+        if (!hitBox.contains(mousePos)) {
+            for (GUIComponent child : getChildren()) {
+                if (child.mouseInside) {
+                    child.mouseInside = false;
+                    GUI.Events.MouseExitEvent exitEvent = new GUI.Events.MouseExitEvent(child, mouseX, mouseY);
+                    child.callBacks.forEach(callBack -> {
+                        if (callBack instanceof GUI.Events.MouseExitCallBack) {
+                            ((GUI.Events.MouseExitCallBack) callBack).onEvent(exitEvent);
+                        }
+                    });
+                }
+            }
+            return;
+        }
+
+        if (verticalScrollbarVisible && verticalTrackBounds.contains(mousePos)) return;
+        if (horizontalScrollbarVisible && horizontalTrackBounds.contains(mousePos)) return;
+
+        int adjustedMouseX = (int) (mousePos.getX() - xPx + scrollX);
+        int adjustedMouseY = (int) (mousePos.getY() - yPx + scrollY);
+
+        for (GUIComponent child : getChildren()) {
+            if (child == null || !child.isVisible()) continue;
+
+            int childX = (int) (child.getX() * getWidthPx());
+            int childY = (int) (child.getY() * getHeightPx());
+            int childWidth = (int) (child.getWidth() * getWidthPx());
+            int childHeight = (int) (child.getHeight() * getHeightPx());
+
+            boolean mouseOverChild = adjustedMouseX >= childX && adjustedMouseX <= childX + childWidth &&
+                    adjustedMouseY >= childY && adjustedMouseY <= childY + childHeight;
+
+            if (mouseOverChild && !child.mouseInside) {
+                child.mouseInside = true;
+                GUI.Events.MouseEnterEvent enterEvent = new GUI.Events.MouseEnterEvent(
+                        child,
+                        adjustedMouseX - childX,
+                        adjustedMouseY - childY
+                );
+                child.callBacks.forEach(callBack -> {
+                    if (callBack instanceof GUI.Events.MouseEnterCallBack) {
+                        ((GUI.Events.MouseEnterCallBack) callBack).onEvent(enterEvent);
+                    }
+                });
+            } else if (!mouseOverChild && child.mouseInside) {
+                child.mouseInside = false;
+                GUI.Events.MouseExitEvent exitEvent = new GUI.Events.MouseExitEvent(
+                        child,
+                        adjustedMouseX - childX,
+                        adjustedMouseY - childY
+                );
+                child.callBacks.forEach(callBack -> {
+                    if (callBack instanceof GUI.Events.MouseExitCallBack) {
+                        ((GUI.Events.MouseExitCallBack) callBack).onEvent(exitEvent);
+                    }
+                });
+            }
+        }
+    }
+
+    // Getters and Setters
     @SuppressWarnings("unused")
     public int getScrollY() { return scrollY; }
     public void setScrollY(int scrollY) {
@@ -649,116 +854,5 @@ public class ScrollableFrame extends GUIComponent {
             updateScrollbarVisibility();
         }
         return this;
-    }
-
-    @Override
-    public void render() {
-        threadRendering = false;
-        if (!visible) return;
-        if (parent != null) {
-            widthPx  = (int) (parent.getWidthPx() * width);
-            heightPx = (int) (parent.getHeightPx() * height);
-            xPx = parent.getxPx() + (int) (parent.getWidthPx() * x);
-            yPx = parent.getyPx() + (int) (parent.getHeightPx() * y);
-        } else {
-            widthPx  = (int) (windowParent.getWidth() * width);
-            heightPx = (int) (windowParent.getHeight() * height);
-            xPx = (int) (windowParent.getWidth() * x);
-            yPx = (int) (windowParent.getHeight() * y);
-        }
-        updateHitBox();
-        boolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
-        if (wasDepthTestEnabled) glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        renderGUIImage();
-        glDisable(GL_BLEND);
-        if (wasDepthTestEnabled) glEnable(GL_DEPTH_TEST);
-        children.sort(new ZSort());
-    }
-
-    public void clearChildren() {
-        getChildren().clear();
-        nextChildY = 0f;
-        if (autoUpdateContent) {
-            updateContentSize();
-            updateScrollbarVisibility();
-        }
-    }
-    private void setupCursorPosCallback() {
-        cursorPosCallback = new GLFWCursorPosCallback() {
-            @Override
-            public void invoke(long windowHandle, double xpos, double ypos) {
-                handleMouseDrag((int) xpos, (int) ypos);
-                handleChildMouseMove((int) xpos, (int) ypos);
-            }
-        };
-        if (getWindowParent() != null && getWindowParent().CursorPosCallbacks != null)
-            getWindowParent().CursorPosCallbacks.add(cursorPosCallback);
-    }
-
-    private void handleChildMouseMove(int mouseX, int mouseY) {
-        if (!visible) return;
-        Point2D mousePos = new Point(mouseX * 2, mouseY * 2);
-
-        if (!hitBox.contains(mousePos)) {
-            // Mouse is outside the scrollable frame - fire exit events for all children that think mouse is inside
-            for (GUIComponent child : getChildren()) {
-                if (child.mouseInside) {
-                    child.mouseInside = false;
-                    GUI.Events.MouseExitEvent exitEvent = new GUI.Events.MouseExitEvent(child, mouseX, mouseY);
-                    child.callBacks.forEach(callBack -> {
-                        if (callBack instanceof GUI.Events.MouseExitCallBack) {
-                            ((GUI.Events.MouseExitCallBack) callBack).onEvent(exitEvent);
-                        }
-                    });
-                }
-            }
-            return;
-        }
-
-        if (verticalScrollbarVisible && verticalTrackBounds.contains(mousePos)) return;
-        if (horizontalScrollbarVisible && horizontalTrackBounds.contains(mousePos)) return;
-
-        int adjustedMouseX = (int)(mousePos.getX() - xPx + scrollX);
-        int adjustedMouseY = (int)(mousePos.getY() - yPx + scrollY);
-
-        for (GUIComponent child : getChildren()) {
-            if (child == null || !child.isVisible()) continue;
-
-            int childX = (int)(child.getX() * getWidthPx());
-            int childY = (int)(child.getY() * getHeightPx());
-            int childWidth = (int)(child.getWidth() * getWidthPx());
-            int childHeight = (int)(child.getHeight() * getHeightPx());
-
-            boolean mouseOverChild = adjustedMouseX >= childX && adjustedMouseX <= childX + childWidth &&
-                    adjustedMouseY >= childY && adjustedMouseY <= childY + childHeight;
-
-            if (mouseOverChild && !child.mouseInside) {
-                child.mouseInside = true;
-                GUI.Events.MouseEnterEvent enterEvent = new GUI.Events.MouseEnterEvent(
-                        child,
-                        adjustedMouseX - childX,
-                        adjustedMouseY - childY
-                );
-                child.callBacks.forEach(callBack -> {
-                    if (callBack instanceof GUI.Events.MouseEnterCallBack) {
-                        ((GUI.Events.MouseEnterCallBack) callBack).onEvent(enterEvent);
-                    }
-                });
-            } else if (!mouseOverChild && child.mouseInside) {
-                child.mouseInside = false;
-                GUI.Events.MouseExitEvent exitEvent = new GUI.Events.MouseExitEvent(
-                        child,
-                        adjustedMouseX - childX,
-                        adjustedMouseY - childY
-                );
-                child.callBacks.forEach(callBack -> {
-                    if (callBack instanceof GUI.Events.MouseExitCallBack) {
-                        ((GUI.Events.MouseExitCallBack) callBack).onEvent(exitEvent);
-                    }
-                });
-            }
-        }
     }
 }

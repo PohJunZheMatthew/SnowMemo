@@ -1,12 +1,15 @@
 package GUI;
 
+import Main.Settings.Settings;
 import Main.Window;
+
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.Objects;
 
 public class Label extends GUIComponent {
 
-    private String text = "";
+    private String text;
     private Font baseFont = new Font("SansSerif", Font.PLAIN, 14);
     private Font scaledFont = baseFont;
     private Color textColor = new Color(33, 37, 41);
@@ -36,9 +39,9 @@ public class Label extends GUIComponent {
         public static final int BOTTOM = 3;
     }
 
-    public Label(Window window) {
-        this(window, "");
-    }
+//    public Label(Window window) {
+//        this(window, "");
+//    }
 
     public Label(Window window, String text) {
         this(window, text, 0.2f, 0.05f);
@@ -58,7 +61,10 @@ public class Label extends GUIComponent {
     protected void paintComponent(Graphics g) {
         updateFontScale();
         Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        if (Settings.getValue("SnowMemo.Defaults.AntiAliasing")!=null) if (Settings.getValue("SnowMemo.Defaults.AntiAliasing") != null &&
+                (boolean) Objects.requireNonNull(Settings.getValue("SnowMemo.Defaults.AntiAliasing"))) {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        }
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         int w = getWidthPx();
         int h = getHeightPx();

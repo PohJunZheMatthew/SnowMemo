@@ -1,7 +1,5 @@
 package Light;
 
-import GUI.BillBoardGUI.BillboardGUI;
-import Main.FileChooser.FileChooser;
 import Main.ShaderProgram;
 import Main.Window;
 import com.mongodb.lang.NonNull;

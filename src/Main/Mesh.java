@@ -38,7 +38,7 @@ public class Mesh implements Renderable, Cloneable {
     protected final int vboId;
     protected final int idxVboId;
     protected final int vertexCount;
-    protected Window win;
+    public Window win;
 
     protected Matrix4f modelMatrix = new Matrix4f();
     protected Matrix3f normMatrix = new Matrix3f();
@@ -543,6 +543,60 @@ public class Mesh implements Renderable, Cloneable {
                     ", specular=" + specular + ", shininess=" + shininess +
                     ", metallic=" + metallic + ", roughness=" + roughness + '}';
         }
+
+        public Vector4f getAmbient() {
+            return ambient;
+        }
+
+        public Material setAmbient(Vector4f ambient) {
+            this.ambient = ambient;
+            return this;
+        }
+
+        public Vector4f getDiffuse() {
+            return diffuse;
+        }
+
+        public Material setDiffuse(Vector4f diffuse) {
+            this.diffuse = diffuse;
+            return this;
+        }
+
+        public Vector4f getSpecular() {
+            return specular;
+        }
+
+        public Material setSpecular(Vector4f specular) {
+            this.specular = specular;
+            return this;
+        }
+
+        public float getShininess() {
+            return shininess;
+        }
+
+        public Material setShininess(float shininess) {
+            this.shininess = shininess;
+            return this;
+        }
+
+        public float getMetallic() {
+            return metallic;
+        }
+
+        public Material setMetallic(float metallic) {
+            this.metallic = metallic;
+            return this;
+        }
+
+        public float getRoughness() {
+            return roughness;
+        }
+
+        public Material setRoughness(float roughness) {
+            this.roughness = roughness;
+            return this;
+        }
     }
 
     public void updateVertices(float[] newVertices) {
@@ -729,5 +783,88 @@ public class Mesh implements Renderable, Cloneable {
         } catch (CloneNotSupportedException e) {
             throw new RuntimeException(e);
         }
+    }
+    public void makeVerticesUnique() {
+        float[] newVerts = new float[(indices.length * stride)];
+        int[] newIndices = new int[indices.length];
+
+        for (int i = 0; i < indices.length; i++) {
+            int oldIndex = indices[i];
+            int newIndex = i;
+
+            newIndices[i] = newIndex;
+
+            System.arraycopy(
+                    vertices, oldIndex * stride,
+                    newVerts, newIndex * stride,
+                    stride
+            );
+        }
+
+        this.vertices = newVerts;
+        this.indices = newIndices;
+
+        updateVertices(newVerts);
+        updateIndices(newIndices);
+    }
+    public void blenderAutoSmooth(float angleDeg) {
+        float cosMax = (float) Math.cos(Math.toRadians(angleDeg));
+
+        int triCount = indices.length / 3;
+        int vertCount = vertices.length / stride;
+
+        Vector3f[] pos = new Vector3f[vertCount];
+        Vector3f[] faceNormals = new Vector3f[triCount];
+        Vector3f[] smoothNormals = new Vector3f[vertCount];
+
+        for (int i = 0; i < vertCount; i++) {
+            int o = i * stride;
+            pos[i] = new Vector3f(vertices[o], vertices[o+1], vertices[o+2]);
+            smoothNormals[i] = new Vector3f();
+        }
+
+        // Compute face normals
+        for (int t = 0; t < triCount; t++) {
+            int i0 = indices[t*3];
+            int i1 = indices[t*3 + 1];
+            int i2 = indices[t*3 + 2];
+
+            Vector3f v0 = pos[i0];
+            Vector3f v1 = pos[i1];
+            Vector3f v2 = pos[i2];
+
+            Vector3f fn = v1.sub(v0, new Vector3f())
+                    .cross(v2.sub(v0, new Vector3f()))
+                    .normalize();
+
+            faceNormals[t] = fn;
+        }
+
+        // Smooth groups
+        for (int t = 0; t < triCount; t++) {
+            Vector3f fn = faceNormals[t];
+
+            for (int v = 0; v < 3; v++) {
+                int vi = indices[t*3 + v];
+
+                // Add normals only if angle criteria matches Blender's logic
+                if (smoothNormals[vi].length() == 0 ||
+                        fn.dot(smoothNormals[vi].normalize(new Vector3f())) >= cosMax) {
+
+                    smoothNormals[vi].add(fn);
+                }
+            }
+        }
+
+        // Normalize & write results
+        for (int i = 0; i < vertCount; i++) {
+            smoothNormals[i].normalize();
+            int o = i * stride;
+            vertices[o+3] = smoothNormals[i].x;
+            vertices[o+4] = smoothNormals[i].y;
+            vertices[o+5] = smoothNormals[i].z;
+        }
+
+        updateVertices(vertices);
     }
 }

@@ -114,6 +114,7 @@ public class ShadowMap {
 
         // Render each mesh
         for (Mesh mesh : meshes) {
+            if (mesh.isVisible()) continue;
             Matrix4f modelLightViewMatrix = buildModelViewMatrix(mesh, lightViewMatrix);
             depthShaderProgram.setUniform("modelLightViewMatrix", modelLightViewMatrix);
 

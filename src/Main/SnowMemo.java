@@ -1,8 +1,7 @@
-package Main;//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+package Main;
+
 import GUI.Events.*;
 import GUI.GUIComponent;
-import GUI.ScrollableFrame;
 import GUI.Label;
 import Light.AmbientLight;
 import Light.DirectionalLight;
@@ -10,20 +9,21 @@ import Main.FileChooser.FileChooser;
 import Main.Shadow.ShadowMap;
 import Main.Node.Node;
 import Main.Theme.Theme;
+import Main.User.UserGUIComponent;
+import imgui.*;
+import imgui.flag.*;
+import imgui.type.ImBoolean;
 import org.joml.Matrix4f;
+import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.glfw.*;
-import org.lwjgl.opencl.CL;
-import org.lwjgl.opengl.GL;
 
 import java.awt.*;
-import java.awt.geom.AffineTransform;
-import java.awt.geom.Arc2D;
 import java.io.*;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -39,30 +39,28 @@ public class SnowMemo {
     double preposx,preposy = 0.0;
     @SuppressWarnings("unused")
     static AmbientLight ambientLight = new AmbientLight(0.7f,0.7f,0.7f,1.0f);
-    float zoom = 6;
+    static float zoom = 6;
     float perZoom = 1.0f;
-    static final int MAX_ZOOM = 10,MIN_ZOOM = -5;
+    static final int MAX_ZOOM = 10,MIN_ZOOM = -15;
     static DirectionalLight sun;
     @SuppressWarnings("unused")
     static int timeOfDay = 0;
-    static GUIComponent backButton;
     static FileChooser fileChooser;
-    private static ShaderProgram shaderProgram;
     public static ShadowMap shadowMap;
     private static final Font quickSandFont;
     private static final Font sanserifFont;
-    private Node node;
-    private Node connectedTestNode;
-    private ScrollableFrame addingNodeScrollFrame;
+    private AddMenu addMenu = new AddMenu(this);
+
+    // Auto-save variables
+    private static final long AUTO_SAVE_INTERVAL_MS = 30000; // 30 seconds
+    private long lastAutoSaveTime = System.currentTimeMillis();
+    private SaveIndicator saveIndicator;
+
     static {
         try {
-            quickSandFont = Font.createFont(Font.TRUETYPE_FONT,SnowMemo.class.getResourceAsStream("QuicksandFont/Quicksand-VariableFont_wght.ttf"));
+            quickSandFont = Font.createFont(Font.TRUETYPE_FONT,SnowMemo.class.getResourceAsStream("Resources/Fonts/QuicksandFont/Quicksand-VariableFont_wght.ttf"));
             sanserifFont = new Font("SansSerif",Font.PLAIN,12);
-        } catch (FontFormatException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        } catch (Exception e) {
+        } catch (FontFormatException | IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -72,7 +70,9 @@ public class SnowMemo {
             Color.BLACK,
             new Color[]{ Color.WHITE, Color.GRAY, Color.DARK_GRAY },
             new Color[]{ Color.WHITE },
-            new Font[]{quickSandFont}
+            new Font[]{quickSandFont},
+            Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/SanSerif/Open_Sans/static/OpenSans-Regular.ttf")),
+            Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/SanSerif/Open_Sans/OpenSans-VariableFont_wdth,wght.ttf"))
     );
 
     // White Theme
@@ -80,160 +80,54 @@ public class SnowMemo {
             Color.WHITE,
             new Color[]{ Color.BLACK, Color.LIGHT_GRAY, Color.DARK_GRAY },
             new Color[]{ Color.BLACK } ,
-            new Font[]{sanserifFont}
+            new Font[]{sanserifFont},
+            Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/SanSerif/Open_Sans/static/OpenSans-Regular.ttf")),
+            Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/SanSerif/Open_Sans/OpenSans-VariableFont_wdth,wght.ttf"))
     );
 
     public static Theme currentTheme = whiteTheme;
     public static boolean draggable = true;
     private MainMenuScreen menuScreen;
+    private List<Memo> memos;
+
     public SnowMemo(){
         window = new Window("Snow Memo");
-        menuScreen = new MainMenuScreen(window);
         fileChooser = new FileChooser();
         sun = new DirectionalLight(
                 window,
-                new Vector3f(0.0f, -1.0f, -1.0f).normalize(), // toward south and downward
+                new Vector3f(0.0f, -1.0f, -1.0f).normalize(),
                 new Vector4f(1, 1, 1, 1.0f),
-                new Vector4f(1.0f, 0.95f, 0.8f, 1.0f),
+                new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
                 new Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
                 10f
         );
 
         try {
             shadowMap = new ShadowMap();
-            shadowMap.setOrthoBounds(new ShadowMap.OrthoBounds(15f, 0.1f, 100f));
-            shadowMap.setShadowDistance(100f);
+            shadowMap.setOrthoBounds(new ShadowMap.OrthoBounds(100f, 0.01f, 100f));
+            shadowMap.setShadowDistance(75f);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-//        renderable.add(new Mesh(Mesh.CUBE_POS_UV,Mesh.CUBE_INDICES,window,Texture.loadTexture(this.getClass().getResourceAsStream("2025-03-29T10:45:07.749198.png"))));
+
+        memos = Memo.refreshMemos(window);
         renderable.add(new Baseplate().setVisible(true));
-//        renderable.add(Utils.loadObj(window,this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class));
-//        renderable.add(Utils.loadObj(window,this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class).setPosition(new Vector3f(2f,0f,0f)));
-//        renderable.add(Utils.loadObj(window,this.getClass().getResourceAsStream("Cube.obj"), SnowMemo.class).setPosition(new Vector3f(4f,0f,0f)));
-        node = new Node(window);
-        connectedTestNode = new Node(window);
-        renderable.add(node);
-        renderable.add(connectedTestNode);
-        node.setPosition(new Vector3f(15f,1f,0f));
-        node.setScale(new Vector3f(1f,1f,1f));
-        connectedTestNode.setPosition(new Vector3f(20f,5f,0f));
-        node.connect(connectedTestNode);
-        backButton = new GUIComponent(window,0.01f, 0.01f, 0.1f, 0.05f) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g;
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-                g2.setStroke(new BasicStroke(5f));
 
-                int w = getWidthPx();
-                int h = getHeightPx();
-                int arc = (int) (Math.min(w, h) * 0.25f);
-
-                AffineTransform old = g2.getTransform();
-                g2.rotate(Math.toRadians(180), w / 2.0, h / 2.0);
-                g2.setColor(Color.decode("#bac3e0"));
-                g2.fillRoundRect(0, 0, w, h, arc, arc);
-
-                g2.setTransform(old);
-
-                String arrow = "➭";
-                String label = "Back";
-
-                Font quicksand;
-                try {
-                    quicksand = Font.createFont(Font.TRUETYPE_FONT,
-                                    this.getClass().getResourceAsStream("QuicksandFont/Quicksand-VariableFont_wght.ttf"))
-                            .deriveFont(Font.BOLD, h * 0.5f);
-                } catch (Exception e) {
-                    quicksand = g2.getFont().deriveFont(Font.BOLD, h * 0.5f);
-                }
-
-                Font arrowFont = g2.getFont().deriveFont(Font.BOLD, h ); // default font for arrow
-
-                g2.setFont(quicksand);
-                FontMetrics labelMetrics = g2.getFontMetrics();
-                int textW = labelMetrics.stringWidth(label);
-                int textAscent = labelMetrics.getAscent();
-                int textDescent = labelMetrics.getDescent();
-
-                g2.setFont(arrowFont);
-                FontMetrics arrowMetrics = g2.getFontMetrics();
-                int arrowW = arrowMetrics.stringWidth(arrow);
-                int arrowAscent = arrowMetrics.getAscent();
-                int arrowDescent = arrowMetrics.getDescent();
-
-                int totalW = arrowW + textW + 10;
-                if (totalW > w - 10) {
-                    float scale = (w - 10f) / totalW;
-                    arrowFont = arrowFont.deriveFont(Font.BOLD, arrowFont.getSize2D() * scale);
-                    quicksand = quicksand.deriveFont(Font.BOLD, quicksand.getSize2D() * scale);
-                    g2.setFont(arrowFont);
-                    arrowMetrics = g2.getFontMetrics();
-                    arrowW = arrowMetrics.stringWidth(arrow);
-                    arrowAscent = arrowMetrics.getAscent();
-                    arrowDescent = arrowMetrics.getDescent();
-                    g2.setFont(quicksand);
-                    labelMetrics = g2.getFontMetrics();
-                    textW = labelMetrics.stringWidth(label);
-                    textAscent = labelMetrics.getAscent();
-                    textDescent = labelMetrics.getDescent();
-                    totalW = arrowW + textW + 10;
-                }
-
-                int startX = (w - totalW) / 2;
-                int centerY = h / 2;
-
-                // Correct baseline for vertical centering
-                int arrowBaseY = (int) ((((float) (h - (arrowAscent + arrowDescent)) / 2) + arrowAscent) * 1.3f);
-                int labelBaseY = (h - (textAscent + textDescent)) / 2 + textAscent;
-
-                // Shadow
-                g2.setColor(new Color(0, 0, 0, 80));
-                AffineTransform arrowOld = g2.getTransform();
-                g2.translate(startX + arrowW / 2.0, arrowBaseY - arrowAscent / 2.0);
-                g2.rotate(Math.toRadians(180));
-                g2.setFont(arrowFont);
-                g2.drawString(arrow, -arrowW / 2, arrowAscent / 2);
-                g2.setTransform(arrowOld);
-
-                g2.setFont(quicksand);
-                g2.drawString(label, startX + arrowW + 10 + 2, labelBaseY + 2);
-
-                // Foreground
-                g2.setColor(Color.WHITE);
-                arrowOld = g2.getTransform();
-                g2.translate(startX + arrowW / 2.0, arrowBaseY - arrowAscent / 2.0);
-                g2.rotate(Math.toRadians(180));
-                g2.setFont(arrowFont);
-                g2.drawString(arrow, -arrowW / 2, arrowAscent / 2);
-                g2.setTransform(arrowOld);
-
-                g2.setFont(quicksand);
-                g2.drawString(label, startX + arrowW + 10, labelBaseY);
-                g2.setColor(Color.WHITE);
-                Arc2D cornerArc = new Arc2D.Float(getHeightPx()*0.1f, getHeightPx()*0.1f, arc, arc, 90,90, Arc2D.OPEN);
-                g2.draw(cornerArc);
-            }
-            @Override
-            public void init() {
-
-            }
-        };
-        backButton.addCallBack(new MouseClickCallBack() {
-            @Override
-            public void onEvent(MouseClickEvent e) {
-                System.out.println("fileChooser.chooseFile() = " + fileChooser.chooseFile());
-            }
-        });
         try {
+            window.setImGuiToRender(addMenu);
+            saveIndicator = new SaveIndicator();
+            window.setImGuiToRender(saveIndicator);
             init();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
         run();
     }
+
+    public static void resetScroll() {
+        zoom = 6;
+    }
+
     public void init() throws Exception{
         GLFWErrorCallback.createPrint(System.out).set();
         renderable.forEach(mesh -> {
@@ -243,78 +137,52 @@ public class SnowMemo {
                 throw new RuntimeException(e);
             }
         });
-        menuScreen.init();
-        addingNodeScrollFrame = new ScrollableFrame(window);
-        addingNodeScrollFrame.setVisible(false);
-        addingNodeScrollFrame.setWidth(0.15f);
-        addingNodeScrollFrame.setHeight(0.25f);
-        addingNodeScrollFrame.setCornerRadius(25);
-        addingNodeScrollFrame.setBackgroundColor(currentTheme.getMainColor());
-        addingNodeScrollFrame.setAutoUpdateContent(true);
-        addingNodeScrollFrame.setBorderColor(Color.black);
-        addingNodeScrollFrame.setBorderThickness(2f);
-        window.MouseButtonCallbacks.add(new GLFWMouseButtonCallback() {
-            @Override
-            public void invoke(long window, int button, int action, int mods) {
-                addingNodeScrollFrame.setVisible(false);
-            }
-        });
+
         window.KeyCallbacks.add(new GLFWKeyCallback() {
             @Override
             public void invoke(long windowHandle, int key, int scancode, int action, int mods) {
-                if (action== GLFW_PRESS){
-                    if (mods== GLFW_MOD_SHIFT){
-                        if (key==GLFW_KEY_A){
-                            addingNodeScrollFrame.clearChildren();
-                            for (Class<Node> registeredNode : Node.getAllRegisteredNodes()) {
-                                Label label = new Label(window," - "+registeredNode.getSimpleName(),0,0,1f,0.15f);
-                                label.setAutoResizeMode(Label.AutoResizeMode.FIT_BOTH);
-                                label.setBold(false);
-                                label.addCallBack(new MouseEnterCallBack() {
-                                    @Override
-                                    public void onEvent(MouseEnterEvent e) {
-                                        label.setItalic(true);
-                                        label.setText(" - ["+registeredNode.getSimpleName()+"]");
-                                    }
-                                });
-                                label.addCallBack(new MouseExitCallBack() {
-                                    @Override
-                                    public void onEvent(MouseExitEvent e) {
-                                        label.setItalic(false);
-                                        label.setText(" - "+registeredNode.getSimpleName());
-                                    }
-                                });
-                                label.addCallBack(new MouseClickCallBack() {
-                                    @Override
-                                    public void onEvent(MouseClickEvent e) {
-                                        addingNodeScrollFrame.setVisible(false);
-                                        try {
-                                            Node newNode = registeredNode.getDeclaredConstructor(Window.class).newInstance(window);
-                                            newNode.setPosition(getWorldCoordinatesFromScreen(window.mouseX,window.mouseY));
-                                        } catch (InstantiationException ex) {
-                                            throw new RuntimeException(ex);
-                                        } catch (IllegalAccessException ex) {
-                                            throw new RuntimeException(ex);
-                                        } catch (InvocationTargetException ex) {
-                                            throw new RuntimeException(ex);
-                                        } catch (NoSuchMethodException ex) {
-                                            throw new RuntimeException(ex);
-                                        }
-                                    }
-                                });
-                                addingNodeScrollFrame.addChild(label);
+                if (action == GLFW_PRESS) {
+                    // Ctrl+S or Cmd+S for manual save
+                    if ((mods == GLFW_MOD_CONTROL || mods == GLFW_MOD_SUPER) && key == GLFW_KEY_S) {
+                        if (Memo.getCurrentMemo() != null && !menuScreen.isVisible()) {
+                            Memo.getCurrentMemo().quickSave();
+                            saveIndicator.showSaved();
+                            System.out.println("Manual save triggered");
+                        }
+                    }
+
+                    if (mods == GLFW_MOD_SHIFT) {
+                        if (key == GLFW_KEY_A && !menuScreen.isVisible()) {
+                            addMenu.nodeTypes.clear();
+                            for (Class<? extends Node> registeredNode : Node.getAllRegisteredNodes()) {
+                                addMenu.nodeTypes.add(registeredNode);
                             }
-                            addingNodeScrollFrame.setVisible(true);
-                            addingNodeScrollFrame.setX((float) (window.mouseX*2/window.getWidth()));
-                            addingNodeScrollFrame.setY((float) (window.mouseY*2/window.getHeight()));
+                            addMenu.show();
                         }
                     }
                 }
             }
         });
+
+        menuScreen = new MainMenuScreen(window);
+        menuScreen.init();
+        renderable.add(menuScreen);
+        new UserGUIComponent(window);
     }
+
     public void update() {
+        draggable = !menuScreen.isVisible() && draggable;
         Updatable.updateAll(window);
+
+        // Auto-save logic
+        if (!menuScreen.isVisible() && Memo.getCurrentMemo() != null) {
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastAutoSaveTime >= AUTO_SAVE_INTERVAL_MS) {
+                performAutoSave();
+                lastAutoSaveTime = currentTime;
+            }
+        }
+
         if (mouseWheelVelocity != 0) {
             float zoomSpeed = 0.5f;
             float desiredZoom = zoom + mouseWheelVelocity * zoomSpeed;
@@ -322,7 +190,7 @@ public class SnowMemo {
             float delta = desiredZoom - zoom;
             if (delta != 0) {
                 if (camera.cameraMovement == Camera.CameraMovement.ZoomInAndOut) {
-                    camera.move(new Vector3f(0, 0, -delta)); // negative to zoom in
+                    camera.move(new Vector3f(0, 0, -delta));
                 } else if (camera.cameraMovement == Camera.CameraMovement.ScrollUpAndDown) {
                     camera.move(new Vector3f(0, delta, 0));
                 }
@@ -333,6 +201,19 @@ public class SnowMemo {
         }
     }
 
+    private void performAutoSave() {
+        Memo currentMemo = Memo.getCurrentMemo();
+        if (currentMemo != null && currentMemo.isLoaded()) {
+            try {
+                currentMemo.autoSave();
+                saveIndicator.showAutoSaved();
+                System.out.println("Auto-saved memo: " + currentMemo.getName());
+            } catch (Exception e) {
+                System.err.println("Auto-save failed: " + e.getMessage());
+                saveIndicator.showError();
+            }
+        }
+    }
 
     public void run(){
         updateThread = new Thread(){
@@ -349,16 +230,19 @@ public class SnowMemo {
             }
         };
         updateThread.start();
-        glfwSetScrollCallback(window.window, new GLFWScrollCallback() {
+
+        window.ScrollCallbacks.add(new GLFWScrollCallback() {
             @Override public void invoke (long win, double dx, double dy) {
+                if (menuScreen.visible) return;
                 boolean inGUI = false;
                 for (Object guiComponent:GUIComponent.getGUIComponents(window)){
-                    inGUI = ((GUIComponent)guiComponent).getHitBox().contains(window.mouseX*2,window.mouseY*2)&&((GUIComponent)guiComponent).isVisible();
+                    inGUI = ((GUIComponent)guiComponent).getHitBox().contains(window.mouseX,window.mouseY)&&((GUIComponent)guiComponent).isVisible();
                     if (inGUI) break;
                 }
                 if (!inGUI) mouseWheelVelocity = (float) dy;
             }
         });
+
         window.CursorPosCallbacks.add(new GLFWCursorPosCallback() {
             @Override
             public void invoke(long win, double xpos, double ypos) {
@@ -377,6 +261,7 @@ public class SnowMemo {
                 }
             }
         });
+
         window.show();
         while (!glfwWindowShouldClose(window.window)){
             List<Mesh> meshes = new ArrayList<>();
@@ -386,28 +271,11 @@ public class SnowMemo {
                 }
             }
 
-            shadowMap.setOrthoBounds(new ShadowMap.OrthoBounds(100f, 0.1f, 100f));
-            shadowMap.setShadowDistance(15f);
-            Vector3f sceneCenter = new Vector3f(2, -2.5f, 0); // Middle between baseplate and cubes
-
-            boolean debug = Math.random() < 0.016;
-
-            if (debug) {
-//                System.out.println("=== SHADOW DEBUG ===");
-//                System.out.println("Scene center: " + sceneCenter);
-//                System.out.println("Rendering " + meshes.size() + " meshes to shadow map");
-//                System.out.println("Light direction: " + sun.getDirection());
-            }
-
+            Vector3f sceneCenter = new Vector3f(2, -2.5f, 0);
             shadowMap.render(window, meshes, sceneCenter);
-            
-            if (shadowDebugDone) {
-                testShadowMapVisibility();
-                shadowDebugDone = true;
-            }
+
             Matrix4f lightSpaceMatrix = shadowMap.getLightSpaceMatrix();
 
-            // Set light space matrix for all meshes before rendering
             try {
                 Mesh.sharedShaderProgram.bind();
                 if (!Mesh.sharedShaderProgram.hasUniform("lightSpaceMatrix")) {
@@ -420,127 +288,44 @@ public class SnowMemo {
             }
             window.render(renderable);
         }
+
+        // Save before closing
+        if (Memo.getCurrentMemo() != null) {
+            System.out.println("Saving before exit...");
+            Memo.getCurrentMemo().save(false);
+        }
+
         cleanUp();
         window.close();
     }
+
     public void cleanUp(){
         renderable.forEach(Renderable::cleanUp);
     }
-    static boolean shadowDebugDone = true;
 
-    public void testShadowMapVisibility() {
-//        System.out.println("=== SHADOW MAP TEST ===");
-
-        // Bind the depth texture
-        glBindFramebuffer(GL_FRAMEBUFFER, shadowMap.getDepthMapFBO());
-
-        // Read center pixel
-        float[] centerDepth = new float[1];
-        glReadPixels(ShadowMap.SHADOW_MAP_WIDTH/2, ShadowMap.SHADOW_MAP_HEIGHT/2,
-                1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, centerDepth);
-//        System.out.println("Center depth: " + centerDepth[0]);
-
-        // Read sample of depths
-        float[] depths = new float[25];
-        glReadPixels(ShadowMap.SHADOW_MAP_WIDTH/2 - 2, ShadowMap.SHADOW_MAP_HEIGHT/2 - 2,
-                5, 5, GL_DEPTH_COMPONENT, GL_FLOAT, depths);
-
-        float minDepth = 1.0f, maxDepth = 0.0f;
-        int nonOneCount = 0;
-        for (float d : depths) {
-            minDepth = Math.min(minDepth, d);
-            maxDepth = Math.max(maxDepth, d);
-            if (d < 0.999f) nonOneCount++;
-        }
-
-//        System.out.println("Min depth: " + minDepth);
-//        System.out.println("Max depth: " + maxDepth);
-//        System.out.println("Non-1.0 pixels: " + nonOneCount + "/25");
-//
-//        if (nonOneCount == 0) {
-//            System.out.println("WARNING: Shadow map appears empty (all depths = 1.0)");
-//            System.out.println("This means objects are not being rendered to shadow map");
-//        } else {
-//            System.out.println("SUCCESS: Shadow map contains geometry!");
-//        }
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-    public static void main(String[] args) {
-//        System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
-//        System.setProperty("https.protocols", "TLSv1.2");
-//        String connectionString = "mongodb+srv://pohjunzhematthew:Inukacom1612@snowmemo.kyxexhg.mongodb.net/?retryWrites=true&w=majority&appName=SnowMemo";
-//        ServerApi serverApi = ServerApi.builder()
-//                .version(ServerApiVersion.V1)
-//                .build();
-//        MongoClientSettings settings = MongoClientSettings.builder()
-//                .applyConnectionString(new ConnectionString(connectionString))
-//                .serverApi(serverApi)
-//                .build();
-//        try (MongoClient mongoClient = MongoClients.create(settings)) {
-//            try {
-//                MongoDatabase database = mongoClient.getDatabase("SnowMemo");
-//                database.runCommand(new Document("ping", 1));
-//                System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
-//                MongoCollection<Document> collection = (MongoCollection<Document>) database.getCollection("Users");
-//                for (Document doc:collection.find()){
-//                    if (doc.containsKey("user")){
-//                        if (((Document)doc.get("user")).containsKey("userName")){
-//                            if (((Document)doc.get("user")).get("userName").equals("Admin")){
-//                                System.out.println(doc.toJson());
-//                            }
-//                        }
-//                    }
-//                }
-//                mongoClient.close();
-//            } catch (MongoException e) {
-//                e.printStackTrace();
-//            }
-//        }
-        try {
-            System.setProperty("apple.awt.application.name", "SnowMemo");
-            System.setProperty("java.awt.headless", "true");
-            new SnowMemo();
-        }
-        catch (OutOfMemoryError e){
-            System.gc();
-            System.out.println("Java OutOfMemoryError: Did you set ");
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
-        System.out.println("QUIT!");
-    }
     public Vector3f getWorldCoordinatesFromScreen(double xpos, double ypos) {
-        // --- 1) Get window size (logical window coords) and framebuffer size (physical pixels)
         int[] winW = new int[1], winH = new int[1];
         int[] fbW  = new int[1], fbH  = new int[1];
         glfwGetWindowSize(window.window, winW, winH);
         glfwGetFramebufferSize(window.window, fbW, fbH);
 
-        // Guard against divide by zero
         if (winW[0] == 0 || winH[0] == 0) return new Vector3f(0, 0, 0);
 
-        /* Convert cursor (window coords) -> frame buffer coords (handles HiDPI) */
         float scaleX = (float) fbW[0] / (float) winW[0];
         float scaleY = (float) fbH[0] / (float) winH[0];
         float fbX = (float) xpos * scaleX;
         float fbY = (float) ypos * scaleY;
 
-        // --- 2) NDC (-1..1)
         float ndcX = (2.0f * fbX) / (float) fbW[0] - 1.0f;
-        float ndcY = 1.0f - (2.0f * fbY) / (float) fbH[0]; // flip Y for OpenGL
+        float ndcY = 1.0f - (2.0f * fbY) / (float) fbH[0];
 
-        // --- 3) Clip-space positions for near & far
         Vector4f clipNear = new Vector4f(ndcX, ndcY, -1f, 1f);
         Vector4f clipFar  = new Vector4f(ndcX, ndcY,  1f, 1f);
 
-        // --- 4) Build inverse view-projection
         Matrix4f projectionMatrix = window.getCurrentWindow().getProjectionMatrix();
-        Matrix4f viewMatrix = camera.getViewMatrix(); // should be the camera view matrix
+        Matrix4f viewMatrix = camera.getViewMatrix();
         Matrix4f invViewProj = new Matrix4f(projectionMatrix).mul(viewMatrix).invert();
 
-        // --- 5) Transform clip -> world (and perspective divide)
         Vector4f worldNear4 = new Vector4f(clipNear).mul(invViewProj);
         Vector4f worldFar4  = new Vector4f(clipFar).mul(invViewProj);
 
@@ -555,23 +340,224 @@ public class SnowMemo {
 
         rayDirection.normalize();
 
-        // --- 6) Intersect with ground plane z = 0 (plane normal (0,0,1))
-        // For plane z=0 you can use simplified formula:
-        // t = (0 - rayStart.z) / rayDirection.z
         float denom = rayDirection.z;
         if (Math.abs(denom) < 1e-6f) {
-            // Ray parallel to plane → return projection of start onto plane (or some fallback)
             return new Vector3f(rayStart.x, rayStart.y, 0f);
         }
 
         float t = -rayStart.z / denom;
         if (t < 0f) {
-            // Intersection is behind the camera; choose fallback (here we project start)
             return new Vector3f(rayStart.x, rayStart.y, 0f);
         }
 
         Vector3f worldPosition = new Vector3f(rayStart).add(new Vector3f(rayDirection).mul(t));
-        // NOTE: do NOT multiply coordinates by 2 here — that caused the offset/scale.
         return worldPosition;
+    }
+
+    // Save indicator ImGui component
+    private static class SaveIndicator implements Renderable {
+        private String message = "";
+        private long displayUntil = 0;
+        private boolean isError = false;
+
+        public void showSaved() {
+            message = "Saved";
+            isError = false;
+            displayUntil = System.currentTimeMillis() + 2000;
+        }
+
+        public void showAutoSaved() {
+            message = "Auto-saved";
+            isError = false;
+            displayUntil = System.currentTimeMillis() + 2000;
+        }
+
+        public void showError() {
+            message = "Save failed!";
+            isError = true;
+            displayUntil = System.currentTimeMillis() + 3000;
+        }
+
+        @Override
+        public void render() {
+            if (System.currentTimeMillis() > displayUntil || message.isEmpty()) {
+                return;
+            }
+
+            ImGuiViewport vp = ImGui.getMainViewport();
+            ImGui.setNextWindowPos(
+                    vp.getWorkPosX() + vp.getWorkSizeX() - 150,
+                    vp.getWorkPosY() + vp.getWorkSizeY() - 50,
+                    ImGuiCond.Always
+            );
+            ImGui.setNextWindowSize(140, 40, ImGuiCond.Always);
+
+            ImGui.begin("##SaveIndicator",
+                    ImGuiWindowFlags.NoTitleBar |
+                            ImGuiWindowFlags.NoResize |
+                            ImGuiWindowFlags.NoMove |
+                            ImGuiWindowFlags.NoScrollbar |
+                            ImGuiWindowFlags.NoCollapse |
+                            ImGuiWindowFlags.NoBackground
+            );
+
+            ImGuiStyle style = ImGui.getStyle();
+            ImVec4 oldColor = style.getColor(ImGuiCol.Text);
+
+            if (isError) {
+                style.setColor(ImGuiCol.Text, 1.0f, 0.2f, 0.2f, 1.0f);
+            } else {
+                style.setColor(ImGuiCol.Text, 0.2f, 0.8f, 0.2f, 1.0f);
+            }
+
+            ImGui.text(message);
+
+            style.setColor(ImGuiCol.Text, oldColor.x, oldColor.y, oldColor.z, oldColor.w);
+            ImGui.end();
+        }
+
+        @Override
+        public void init() {}
+
+        @Override
+        public void cleanUp() {}
+    }
+
+    private static class AddMenu implements Renderable {
+        private ImBoolean visible = new ImBoolean(false);
+        private List<Class<? extends Node>> nodeTypes = new ArrayList<>();
+        private float x, y = 0;
+        private SnowMemo app;
+
+        public AddMenu(SnowMemo app) {
+            this.app = app;
+        }
+
+        @Override
+        public void render() {
+            if (!visible.get()) return;
+
+            ImGuiViewport vp = ImGui.getMainViewport();
+            ImGui.setNextWindowPos(vp.getWorkSizeX() * x, vp.getWorkSizeY() * y, ImGuiCond.Appearing);
+            ImGui.setNextWindowSize(vp.getWorkSizeX() * 0.15f, vp.getWorkSizeY() * 0.3f, ImGuiCond.Always);
+
+            ImGui.begin("Add node", visible, ImGuiWindowFlags.NoResize);
+            ImGuiStyle style = ImGui.getStyle();
+
+            ImVec4 oldTextColor = new ImVec4(style.getColor(ImGuiCol.Text));
+
+            Color themeColor = SnowMemo.currentTheme.getSecondaryColors()[0];
+            style.setColor(
+                    ImGuiCol.Text,
+                    themeColor.getRed() / 255f,
+                    themeColor.getGreen() / 255f,
+                    themeColor.getBlue() / 255f,
+                    themeColor.getAlpha() / 255f
+            );
+
+            ImGui.pushFont(Window.bigFont);
+            ImGui.text("Add nodes");
+            ImGui.popFont();
+
+            style.setColor(
+                    ImGuiCol.Text,
+                    oldTextColor.x,
+                    oldTextColor.y,
+                    oldTextColor.z,
+                    oldTextColor.w
+            );
+
+            for (Class<? extends Node> nodeClass : nodeTypes) {
+                if (ImGui.button(nodeClass.getSimpleName(), -1, 0)) {
+                    spawnNode(nodeClass);
+                    visible.set(false);
+
+                    // Mark memo as dirty when node is added
+                    if (Memo.getCurrentMemo() != null) {
+                        Memo.getCurrentMemo().markDirty();
+                    }
+                }
+
+                if (ImGui.isItemHovered()) {
+                    ImGui.setMouseCursor(ImGuiMouseCursor.Hand);
+                }
+            }
+
+            ImGui.end();
+        }
+
+        @Override
+        public void init() {}
+
+        @Override
+        public void cleanUp() {}
+
+        public void show() {
+            visible.set(false);
+            Window w = Window.getCurrentWindow();
+            ImGuiViewport vp = ImGui.getMainViewport();
+
+            int[] winW = new int[1], winH = new int[1];
+            int[] fbW = new int[1], fbH = new int[1];
+
+            glfwGetWindowSize(w.window, winW, winH);
+            glfwGetFramebufferSize(w.window, fbW, fbH);
+
+            float scaleX = (float) winW[0] / fbW[0];
+            float scaleY = (float) winH[0] / fbH[0];
+
+            float logicalMouseX = (float) w.getMouseX() * scaleX;
+            float logicalMouseY = (float) w.getMouseY() * scaleY;
+
+            x = logicalMouseX / vp.getWorkSizeX();
+            y = logicalMouseY / vp.getWorkSizeY();
+
+            visible.set(true);
+        }
+
+        public void hide(){
+            visible.set(false);
+        }
+
+        public ImBoolean getVisible(){
+            return visible;
+        }
+
+        private void spawnNode(Class<? extends Node> nodeClass) {
+            try {
+                Window window = Window.getCurrentWindow();
+                Node newNode = nodeClass
+                        .getDeclaredConstructor(Window.class)
+                        .newInstance(window);
+                System.out.println(newNode);
+                Vector3f worldPos = app.getWorldCoordinatesFromScreen(
+                        window.getLogicalMouseX(),
+                        window.getLogicalMouseY()
+                );
+                newNode.setPosition(worldPos);
+                app.renderable.add(newNode);
+                newNode.init();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        System.setProperty("jdk.tls.client.protocols", "TLSv1.2");
+        System.setProperty("https.protocols", "TLSv1.2");
+        try {
+            System.setProperty("apple.awt.application.name", "SnowMemo");
+            System.setProperty("java.awt.headless", "true");
+            new SnowMemo();
+        }
+        catch (OutOfMemoryError e){
+            System.gc();
+            System.out.println("Java OutOfMemoryError: Did you set memory limits?");
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.out.println("QUIT!");
     }
 }

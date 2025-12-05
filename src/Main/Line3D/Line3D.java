@@ -12,7 +12,6 @@ import java.util.Arrays;
 import java.util.Objects;
 
 public class Line3D extends Mesh implements Updatable {
-
     private static final int RES = 16; // number of subdivisions
     public Line3DEquation equation = new QuarticLine3DEquation();
 
@@ -26,30 +25,56 @@ public class Line3D extends Mesh implements Updatable {
     private final int[] originalIndices;
     private final float[] updatingVerts;
     private Vector4f color = new Vector4f();
+
     private volatile float[] pendingVerts = null;
     private volatile int[] pendingIndices = null;
 
     private static final float MIN_LINE_LENGTH = 0.01f; // Minimum visible length
+
+    // Track the last values we calculated from
+    private final Vector3f lastStartPos = new Vector3f();
+    private final Vector3f lastEndPos = new Vector3f();
 
     public Line3D(Vector3f startPos, Vector3f endPos, Window window) {
         super(Utils.loadObjFromString(baseVertices, Line3D.class, window), window);
         this.outline = false;
         this.startPos = new Vector3f(startPos);
         this.endPos = new Vector3f(endPos);
-
         this.originalVerts = getVertices().clone();
         this.originalIndices = getIndices().clone();
         this.updatingVerts = originalVerts.clone();
 
         Updatable.register(window, this);
+
+        // Initialize tracking
+        lastStartPos.set(Float.NaN, Float.NaN, Float.NaN); // Force first update
+        lastEndPos.set(Float.NaN, Float.NaN, Float.NaN);
+
         setPosition(startPos);
         update();
-        setMaterial(new Material(new Vector4f(1,0.5f,0.5f,1),new Vector4f(1,0.5f,0.5f,1),new Vector4f(1,0.5f,0.5f,1),32));
+
+        setMaterial(new Material(
+                new Vector4f(1, 0.5f, 0.5f, 1),
+                new Vector4f(1, 0.5f, 0.5f, 1),
+                new Vector4f(1, 0.5f, 0.5f, 1),
+                32
+        ));
+
+        makeVerticesUnique();
+        blenderAutoSmooth(30f);
     }
 
     @Override
     public void update() {
+        // Only recalculate if start or end position has changed
+        if (startPos.equals(lastStartPos) && endPos.equals(lastEndPos)) {
+            return;
+        }
+
+        // Update position first
         setPosition(startPos);
+
+        // Calculate offset from start to end
         Vector3f offset = new Vector3f(endPos).sub(startPos);
 
         // Check if the line is too short and would disappear
@@ -64,21 +89,21 @@ public class Line3D extends Mesh implements Updatable {
             }
         }
 
-        // Check if we need to flip the winding order
+        // Determine if we need to flip based on X direction
         boolean flipWinding = offset.x < 0;
 
-        // Use absolute offset for scaling
-        Vector3f absOffset = new Vector3f(offset.x, offset.y, offset.z);
-
+        // Transform vertices based on the offset
+        // Use the actual offset values (including sign) for proper positioning
         for (int i = 0; i < originalVerts.length; i += 3) {
-            float x = originalVerts[i+2];
+            float x = originalVerts[i + 2];
             Vector2f result = equation.equate(x);
-            updatingVerts[i]     = originalVerts[i] + result.x * absOffset.z;
-            updatingVerts[i + 1] = originalVerts[i+1] + result.y * absOffset.y;
-            updatingVerts[i + 2] = originalVerts[i+2] * absOffset.x;
+
+            updatingVerts[i] = originalVerts[i] + result.x * offset.z;
+            updatingVerts[i + 1] = originalVerts[i + 1] + result.y * offset.y;
+            updatingVerts[i + 2] = originalVerts[i + 2] * offset.x;
         }
 
-        // Flip indices if needed to maintain correct winding order
+        // Handle winding order for negative X offset
         if (flipWinding) {
             int[] flippedIndices = new int[originalIndices.length];
             for (int i = 0; i < originalIndices.length; i += 3) {
@@ -92,18 +117,31 @@ public class Line3D extends Mesh implements Updatable {
             pendingIndices = originalIndices.clone();
         }
 
-        // Store for rendering
         pendingVerts = updatingVerts.clone();
+
+        // Remember what we calculated from
+        lastStartPos.set(startPos);
+        lastEndPos.set(endPos);
     }
 
     @Override
     public void render(Camera camera) {
+        blenderAutoSmooth(30f);
+        // Check if we need to update before rendering
+        if (!startPos.equals(lastStartPos) || !endPos.equals(lastEndPos)) {
+            update();
+        }
+
         if (pendingVerts != null) {
             updateVertices(pendingVerts);
+            pendingVerts = null;
         }
+
         if (pendingIndices != null) {
             updateIndices(pendingIndices);
+            pendingIndices = null;
         }
+
         super.render(camera);
     }
 
@@ -113,5 +151,12 @@ public class Line3D extends Mesh implements Updatable {
 
     public Vector3f getEndPos() {
         return endPos;
+    }
+
+    // Helper method to force an update if you modify startPos/endPos directly
+    public void forceUpdate() {
+        lastStartPos.set(Float.NaN, Float.NaN, Float.NaN);
+        lastEndPos.set(Float.NaN, Float.NaN, Float.NaN);
+        update();
     }
 }

@@ -5,7 +5,7 @@ import org.joml.Vector3f;
 
 public class Camera {
     private Vector3f position = new Vector3f(0f, 0, 5);
-    private Vector3f rotation = new Vector3f(0, 0, 0);
+    private Vector3f rotation = new Vector3f(0,0,0);
     private Matrix4f viewMatrix = new Matrix4f();
 
     public enum CameraMovement {
@@ -110,6 +110,9 @@ public class Camera {
         return new Matrix4f(viewMatrix);
     }
 
+    public Vector3f getPosition(Vector3f position) {
+        return position.set(getPosition());
+    }
     public Vector3f getPosition() {
         return new Vector3f(position);
     }
