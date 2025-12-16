@@ -7,16 +7,17 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="lwjgl" level="project" />
     <orderEntry type="library" name="net.java.dev.jna" level="project" />
     <orderEntry type="library" name="net.java.dev.jna.platform" level="project" />
     <orderEntry type="library" name="mongodb.driver.sync" level="project" />
     <orderEntry type="library" name="slf4j.api" level="project" />
     <orderEntry type="library" name="tween-engine-api-sources" level="project" />
-    <orderEntry type="library" name="imgui-app-1.90.0-all" level="project" />
     <orderEntry type="library" name="commons-validator-1.10.1" level="project" />
     <orderEntry type="library" name="jspecify-1.0.0" level="project" />
     <orderEntry type="library" name="json-20250107" level="project" />
     <orderEntry type="library" name="commons-io-2.21.0" level="project" />
+    <orderEntry type="library" name="lwjgl-release-3.3" level="project" />
+    <orderEntry type="library" name="imgui-java-app-1.89.1" level="project" />
+    <orderEntry type="library" name="imgui-app-1.90.0-all" level="project" />
   </component>
 </module>

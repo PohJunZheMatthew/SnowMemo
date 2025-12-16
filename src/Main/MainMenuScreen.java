@@ -31,7 +31,7 @@ public class MainMenuScreen extends Mesh {
     private BillboardGUI memoMenuButton;
     private BillboardGUI settingsMenuButton;
     private Vector3f announcementsOffset = new Vector3f(-0f, 1f, 0.3f);
-    private Vector3f memoTitleOffset = new Vector3f(-2f, -0.5f, 0.3f),memoNewOffset = new Vector3f(-1f,-0.5f,0.3f);
+    private Vector3f memoTitleOffset = new Vector3f(-2f, -0.5f, 0.3f),memoNewOffset = new Vector3f(-1.25f,-0.55f,0.3f);
     private Vector3f memoGridStartOffset = new Vector3f(-2f, -1.5f, 0.3f);
 
     private static final int MEMO_GRID_COLUMNS = 4;

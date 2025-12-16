@@ -10,6 +10,8 @@ import imgui.type.ImString;
 import org.joml.Vector3f;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.lwjgl.nanovg.NanoVG;
+import org.lwjgl.nuklear.Nuklear;
 
 import java.awt.*;
 import java.io.*;
@@ -52,7 +54,10 @@ public class Memo {
 
     private boolean isLoaded = false; // Track if memo nodes are loaded
     private Window window;
-
+    private static MemoSettingsLayout memoSettingsLayout = new MemoSettingsLayout();
+    static{
+        Window.getCurrentWindow().setImGuiToRender(memoSettingsLayout);
+    }
     public Memo(String name, String jsonData, Window window) {
         this.name = name;
         this.jsonData = jsonData;
@@ -372,6 +377,10 @@ public class Memo {
             System.err.println("Failed to load memo nodes: " + name);
             e.printStackTrace();
         }
+        memoSettingsLayout.currentMemo = this;
+        memoSettingsLayout.nameString = new ImString(memoSettingsLayout.currentMemo.name);
+        memoSettingsLayout.descriptionString.set(memoSettingsLayout.currentMemo.description);
+        memoSettingsLayout.visible.set(true);
     }
 
     // Unload nodes to free memory - called when returning to menu
@@ -635,6 +644,7 @@ public class Memo {
 
         @Override
         public void render() {
+            memoSettingsLayout.visible.set(visible.get());
             if (!visible.get()) return;
             ImGuiViewport vp = ImGui.getMainViewport();
             ImGui.setNextWindowSize(new ImVec2(vp.getWorkSizeX() * 0.3f, vp.getWorkSizeY() * 0.08f), ImGuiCond.Always);
@@ -648,6 +658,8 @@ public class Memo {
             applyTheme(style);
             float returnBtnWidth = ImGui.calcTextSize("Return").x + style.getFramePaddingX() * 4;
             if (ImGui.button("Return", returnBtnWidth, contentHeight)) {
+                memoSettingsLayout.visible.set(false);
+                memoSettingsLayout.showMenu.set(false);
                 if (onReturn != null) onReturn.run();
             }
             if (ImGui.isItemHovered()) ImGui.setMouseCursor(ImGuiMouseCursor.Hand);
@@ -831,5 +843,80 @@ public class Memo {
         memoList.add(newMemo);
 
         return newMemo;
+    }
+
+    public static class MemoSettingsLayout implements Renderable {
+        private Memo currentMemo;
+        private ImBoolean visible = new ImBoolean(false);
+        private ImBoolean showMenu = new ImBoolean(false);
+        private ImVec4 oriText;
+        private ImVec4 oriFrameBg;
+
+        private void applyTheme(ImGuiStyle style) {
+            oriText = style.getColor(ImGuiCol.Text);
+            style.setColor(ImGuiCol.Text,
+                    SnowMemo.currentTheme.getSecondaryColors()[0].getRed(),
+                    SnowMemo.currentTheme.getSecondaryColors()[0].getGreen(),
+                    SnowMemo.currentTheme.getSecondaryColors()[0].getBlue(),
+                    SnowMemo.currentTheme.getSecondaryColors()[0].getAlpha());
+            oriFrameBg = style.getColor(ImGuiCol.FrameBg);
+            style.setColor(ImGuiCol.FrameBg,
+                    SnowMemo.currentTheme.getMainColor().getRed(),
+                    SnowMemo.currentTheme.getMainColor().getGreen(),
+                    SnowMemo.currentTheme.getMainColor().getBlue(),
+                    SnowMemo.currentTheme.getMainColor().getAlpha());
+            style.setFrameBorderSize(1f);
+        }
+
+        private void resetStyles(ImGuiStyle style) {
+            style.setColor(ImGuiCol.Text, oriText.x, oriText.y, oriText.z, oriText.w);
+            style.setColor(ImGuiCol.FrameBg, oriFrameBg.x, oriFrameBg.y, oriFrameBg.z, oriFrameBg.w);
+        }
+        private ImString nameString =new ImString(),descriptionString = new ImString(512);
+        @Override
+        public void render() {
+            if (!visible.get()) return;
+            ImGuiViewport vp = ImGui.getMainViewport();
+            ImGui.setNextWindowSize(new ImVec2(vp.getWorkSizeY() * 0.08f, vp.getWorkSizeY() * 0.08f), ImGuiCond.Always);
+            ImGui.setNextWindowPos(new ImVec2(vp.getWorkSizeX() * 0.325f, vp.getWorkSizeY() * 0.01f), ImGuiCond.Always);
+            ImGui.begin(currentMemo.name+" - SettingsBtn",ImGuiWindowFlags.NoResize|ImGuiWindowFlags.NoTitleBar|ImGuiWindowFlags.NoMove|ImGuiWindowFlags.NoCollapse);
+            ImGuiStyle style = ImGui.getStyle();
+            float windowHeight = ImGui.getWindowHeight();
+            float contentHeight = windowHeight - (style.getWindowPaddingY() * 2);
+            applyTheme(style);
+            if (ImGui.button("︙",-1,-1)){
+                showMenu.set(!showMenu.get());
+            }
+            if (ImGui.isItemHovered()){
+                ImGui.setMouseCursor(ImGuiMouseCursor.Hand);
+            }
+            resetStyles(style);
+            ImGui.end();
+            if (showMenu.get()){
+                ImGui.setNextWindowSize(new ImVec2(vp.getWorkSizeX() * 0.8f, vp.getWorkSizeY() * 0.8f), ImGuiCond.Always);
+                ImGui.setNextWindowPos(new ImVec2(vp.getWorkSizeX() * 0.1f, vp.getWorkSizeY() * 0.1f), ImGuiCond.Always);
+                ImGui.begin(currentMemo.name+" - Settings",showMenu, ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse);
+                applyTheme(style);
+                ImGui.pushFont(Window.bigFont);
+                ImGui.text("Name: ");
+                ImGui.sameLine();
+                ImGui.inputText("##MemoName",nameString);
+                ImGui.text("Description: ");
+                ImGui.popFont();
+                ImGui.inputTextMultiline("##MemoDescription",descriptionString);
+                resetStyles(style);
+                ImGui.end();
+            }
+        }
+
+        @Override
+        public void init() {
+
+        }
+
+        @Override
+        public void cleanUp() {
+
+        }
     }
 }

@@ -61,7 +61,6 @@ public class Line3D extends Mesh implements Updatable {
         ));
 
         makeVerticesUnique();
-        blenderAutoSmooth(30f);
     }
 
     @Override

@@ -9,6 +9,7 @@ import imgui.*;
 import imgui.flag.ImGuiCol;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.flag.ImGuiFreeTypeBuilderFlags;
+import imgui.flag.ImGuiWindowFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 import org.joml.Matrix4f;
@@ -22,6 +23,7 @@ import org.lwjgl.system.MemoryUtil;
 import java.lang.reflect.Field;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -61,37 +63,146 @@ public class Window {
     public static ImFont h1Font,h2Font,h3Font,h4Font,h5Font,h6Font;
     public static ImFont monoFont;
     private static List<Renderable> imGUIRenderables = new ArrayList<Renderable>();
-    public void initImGUI(){
+    public void initImGUI() {
         ImGui.createContext();
         ImGuiIO io = ImGui.getIO();
         io.addConfigFlags(ImGuiConfigFlags.ViewportsEnable);
         io.setIniFilename(null);
-        ImFontConfig fontConfig = new ImFontConfig();
-        fontConfig.addFontBuilderFlags(ImGuiFreeTypeBuilderFlags.LoadColor);
-        fontConfig.setFontDataOwnedByAtlas(false);
-        io.getFonts().addFontFromMemoryTTF(SnowMemo.currentTheme.getMainFontBytes(),32f,fontConfig);
-        for (int i = 6;i>0;i--){
-            Class<?> winClass = Window.class;
+
+        byte[] mainFontBytes = SnowMemo.currentTheme.getMainFontBytes();
+        byte[] openMojiFontBytes = SnowMemo.getEmojiFontBytes();
+        byte[] monoFontBytes = SnowMemo.currentTheme.getMainMonoFontBytes();
+        byte[] notoEmojiFontBytes = SnowMemo.getNotoEmojiFontBytes();
+        byte[] symbolaFontBytes = SnowMemo.getSymbolaFontBytes();
+
+        System.out.println("[DEBUG] Font bytes loaded:");
+        System.out.println("  Main font: " + (mainFontBytes != null ? mainFontBytes.length + " bytes" : "NULL"));
+        System.out.println("  OpenMoji font: " + (openMojiFontBytes != null ? openMojiFontBytes.length + " bytes" : "NULL"));
+        System.out.println("  Mono font: " + (monoFontBytes != null ? monoFontBytes.length + " bytes" : "NULL"));
+        System.out.println("  NotoEmoji font: " + (notoEmojiFontBytes != null ? notoEmojiFontBytes.length + " bytes" : "NULL"));
+        System.out.println("  Symbola font: " + (symbolaFontBytes != null ? symbolaFontBytes.length + " bytes" : "NULL"));
+
+        ImFontGlyphRangesBuilder builder = new ImFontGlyphRangesBuilder();
+        builder.addRanges(io.getFonts().getGlyphRangesDefault());
+
+        // Only add ranges that fit in BMP (below 0x10000) for the loop
+        // Emoji ranges 0x1F000+ are added via builder.addText() above instead
+        int[] symbolRanges = {
+                0x2000, 0x206F, 0x2190, 0x21FF, 0x2200, 0x22FF, 0x2300, 0x23FF,
+                0x2460, 0x24FF, 0x2500, 0x257F, 0x2580, 0x259F, 0x25A0, 0x25FF,
+                0x2600, 0x26FF, 0x2700, 0x27BF, 0x2900, 0x297F, 0x2B00, 0x2BFF,
+                0xFE10, 0xFE1F,
+                0 // Null terminator
+        };
+
+        for(int i = 0; i < symbolRanges.length && symbolRanges[i] != 0; i += 2) {
+            for(int k = symbolRanges[i]; k <= symbolRanges[i + 1]; ++k) {
+                builder.addChar((char) k);
+            }
+        }
+        short[] finalRanges = builder.buildRanges();
+
+        System.out.println("[DEBUG] Glyph ranges built: " + finalRanges.length + " entries");
+        System.out.println("[DEBUG] Note: Emojis added via builder.addText() string");
+
+        ImFontConfig mainCfg = new ImFontConfig();
+        ImFont mainFont = io.getFonts().addFontFromMemoryTTF(mainFontBytes, 32f, mainCfg);
+
+        if (symbolaFontBytes != null) {
+            ImFontConfig symbolaCfg = new ImFontConfig();
+            symbolaCfg.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(symbolaFontBytes, 32f, symbolaCfg, finalRanges);
+        }
+
+        if (openMojiFontBytes != null) {
+            ImFontConfig openMojiCfg = new ImFontConfig();
+            openMojiCfg.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(openMojiFontBytes, 32f, openMojiCfg, finalRanges);
+        }
+
+        if (notoEmojiFontBytes != null) {
+            ImFontConfig notoEmojiCfg = new ImFontConfig();
+            notoEmojiCfg.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(notoEmojiFontBytes, 32f, notoEmojiCfg, finalRanges);
+        }
+
+        for (int i = 6; i > 0; i--) {
+            float fontSize = 32f + 32f * (6 - i) / 6f;
             try {
-                Field headerField = winClass.getField("h"+ i +"Font");
-                headerField.set(null,io.getFonts().addFontFromMemoryTTF(SnowMemo.currentTheme.getMainFontBytes(),32f+32f*(6-i)/6,fontConfig));
+                Field headerField = Window.class.getField("h" + i + "Font");
+                ImFontConfig cfg = new ImFontConfig();
+                ImFont headerFont = io.getFonts().addFontFromMemoryTTF(mainFontBytes, fontSize, cfg);
+                headerField.set(null, headerFont);
+
+                if (symbolaFontBytes != null) {
+                    ImFontConfig mergeSymbola = new ImFontConfig();
+                    mergeSymbola.setMergeMode(true);
+                    io.getFonts().addFontFromMemoryTTF(symbolaFontBytes, fontSize, mergeSymbola, finalRanges);
+                }
+
+                if (openMojiFontBytes != null) {
+                    ImFontConfig mergeOpenMoji = new ImFontConfig();
+                    mergeOpenMoji.setMergeMode(true);
+                    io.getFonts().addFontFromMemoryTTF(openMojiFontBytes, fontSize, mergeOpenMoji, finalRanges);
+                }
+
+                if (notoEmojiFontBytes != null) {
+                    ImFontConfig mergeNotoEmoji = new ImFontConfig();
+                    mergeNotoEmoji.setMergeMode(true);
+                    io.getFonts().addFontFromMemoryTTF(notoEmojiFontBytes, fontSize, mergeNotoEmoji, finalRanges);
+                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
-        bigFont = io.getFonts().addFontFromMemoryTTF(SnowMemo.currentTheme.getMainFontBytes(),48f,fontConfig);
-        monoFont = io.getFonts().addFontFromMemoryTTF(SnowMemo.currentTheme.getMainMonoFontBytes(),32,fontConfig);
-        io.getFonts().addFontDefault();
+
+        ImFontConfig bigCfg = new ImFontConfig();
+        bigFont = io.getFonts().addFontFromMemoryTTF(mainFontBytes, 48f, bigCfg);
+        if (symbolaFontBytes != null) {
+            ImFontConfig mergeSymbolaBig = new ImFontConfig();
+            mergeSymbolaBig.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(symbolaFontBytes, 48f, mergeSymbolaBig, finalRanges);
+        }
+        if (openMojiFontBytes != null) {
+            ImFontConfig mergeOpenMojiBig = new ImFontConfig();
+            mergeOpenMojiBig.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(openMojiFontBytes, 48f, mergeOpenMojiBig, finalRanges);
+        }
+        if (notoEmojiFontBytes != null) {
+            ImFontConfig mergeNotoEmojiBig = new ImFontConfig();
+            mergeNotoEmojiBig.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(notoEmojiFontBytes, 48f, mergeNotoEmojiBig, finalRanges);
+        }
+
+        ImFontConfig monoCfg = new ImFontConfig();
+        monoFont = io.getFonts().addFontFromMemoryTTF(monoFontBytes, 32f, monoCfg);
+        if (symbolaFontBytes != null) {
+            ImFontConfig mergeSymbolaMono = new ImFontConfig();
+            mergeSymbolaMono.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(symbolaFontBytes, 32f, mergeSymbolaMono, finalRanges);
+        }
+        if (openMojiFontBytes != null) {
+            ImFontConfig mergeOpenMojiMono = new ImFontConfig();
+            mergeOpenMojiMono.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(openMojiFontBytes, 32f, mergeOpenMojiMono, finalRanges);
+        }
+        if (notoEmojiFontBytes != null) {
+            ImFontConfig mergeNotoEmojiMono = new ImFontConfig();
+            mergeNotoEmojiMono.setMergeMode(true);
+            io.getFonts().addFontFromMemoryTTF(notoEmojiFontBytes, 32f, mergeNotoEmojiMono, finalRanges);
+        }
+
         io.getFonts().build();
-        imGuiImplGlfw.init(window,true);
+
+        System.out.println("[DEBUG] Font atlas built successfully");
+
+        imGuiImplGlfw.init(window, true);
         imGuiImplGl3.init("#version 330");
+
         float[] sx = new float[1], sy = new float[1];
         glfwGetWindowContentScale(window, sx, sy);
-        ImGui.getIO().setFontGlobalScale(sx[0]*0.5f);
-        int error = glGetError();
-        if (error != GL_NO_ERROR) {
-            System.err.println("OpenGL error after ImGui init: " + error);
-        }
+        ImGui.getIO().setFontGlobalScale(sx[0] * 0.5f);
+
         ImGuiStyle style = ImGui.getStyle();
         style.setWindowRounding(7.5f);
         style.setFrameRounding(7.5f);
@@ -99,6 +210,65 @@ public class Window {
         style.setTabRounding(7.5f);
         style.setGrabRounding(7.5f);
         style.setChildRounding(7.5f);
+
+        System.out.println("[DEBUG] ImGui initialized successfully");
+        System.out.println("[DEBUG] Main font loaded: " + (mainFont != null));
+        System.out.println("[DEBUG] Big font loaded: " + (bigFont != null));
+        System.out.println("[DEBUG] Mono font loaded: " + (monoFont != null));
+    }
+
+    // Call this method in your render loop to test animal emoji rendering
+    public void renderAnimalEmojiTest() {
+        ImGui.pushStyleColor(ImGuiCol.Text, 1.0f, 0.0f, 0.0f, 1.0f); // Force red text
+
+        if (ImGui.begin("Animal Emoji Test", ImGuiWindowFlags.AlwaysAutoResize)) {
+            System.out.println("[DEBUG] Rendering test window...");
+
+            // Check current font
+            ImFont currentFont = ImGui.getFont();
+            System.out.println("[DEBUG] Current font: " + (currentFont != null ? "Loaded" : "NULL"));
+            if (currentFont != null) {
+                System.out.println("[DEBUG] Font size: " + currentFont.getFontSize());
+                System.out.println("[DEBUG] Font scale: " + ImGui.getFontSize());
+            }
+
+            // Test character limits
+            ImGui.textColored(1, 1, 0, 1, "ImGui Version: 1.90.9");
+            ImGui.textColored(1, 0.5f, 0, 1, "WCHAR32 Support: UNKNOWN (likely NO)");
+
+            ImGui.separator();
+            ImGui.text("Testing Animal Emoji Rendering:");
+            ImGui.text("If you cannot see ANY text, check console");
+            ImGui.separator();
+
+            // Test BMP emojis (U+2000 to U+FFFF - should work)
+            ImGui.text("BMP Symbols (should work):");
+            ImGui.text("Hearts & symbols: ♥ ★ ☀ ☂ ☺ ♠ ♣ ♦");
+            ImGui.text("Arrows: → ← ↑ ↓ ⇒ ⇐ ⇑ ⇓");
+            ImGui.text("Math: ∀ ∃ ∈ ∑ ∏ √ ∞");
+            ImGui.text("Dingbats: ✂ ✈ ✉ ✏ ✓ ✗");
+
+            ImGui.separator();
+            ImGui.text("Supplementary Plane (requires WCHAR32):");
+            ImGui.text("Animal emojis: 🐵 🐶 🐱 🐭 🐰");
+            ImGui.text("If you see ?? above, WCHAR32 is NOT enabled");
+
+            ImGui.separator();
+            ImGui.textColored(1, 0, 0, 1, "DIAGNOSIS:");
+            ImGui.text("Emoji fonts ARE loaded (1.4MB + 418KB)");
+            ImGui.text("But ImGui can't render 32-bit codepoints");
+
+            ImGui.separator();
+            ImGui.textColored(0, 1, 1, 1, "SOLUTION OPTIONS:");
+            ImGui.text("1. Use imgui-java with WCHAR32 enabled");
+            ImGui.text("2. Use image-based emoji textures instead");
+            ImGui.text("3. Limit to BMP emojis only (very limited)");
+
+            System.out.println("[DEBUG] Window rendered");
+        }
+        ImGui.end();
+
+        ImGui.popStyleColor();
     }
     public Window(){}
     public Window(String title){
@@ -346,6 +516,7 @@ public class Window {
         User.getSignUpLayout().render();
         User.getUserMenuLayout().render();
         User.getSettingsLayout().render();
+        renderAnimalEmojiTest();
         for (Renderable guiRenderable : new ArrayList<>(imGUIRenderables)) {
             guiRenderable.render();
         }

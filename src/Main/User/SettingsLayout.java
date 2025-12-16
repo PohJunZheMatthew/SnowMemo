@@ -79,8 +79,32 @@ public class SettingsLayout {
         //start
         if (ImGui.beginTabBar("SettingsTabs")){
             if (ImGui.beginTabItem("Home")) {
-                ImGui.text("Welcome! "+User.getCurrentUser().getUsername()+"!");
-                ImGui.text("Your account was created on: "+ new Date(User.getCurrentUser().getCreationTime()));
+                ImGui.pushFont(Window.bigFont);
+                String text = "Welcome! "+User.getCurrentUser().getUsername()+"!";
+                ImVec2 size = ImGui.calcTextSize(text);
+                float inputPosX = (windowWidth - size.x) * 0.5f;
+                ImGui.setCursorPosX(inputPosX);
+                ImGui.text(text);
+                ImGui.popFont();
+                style.setChildBorderSize(1f);
+                ImGui.beginChild("AccountDate",windowWidth*0.5f-(style.getItemSpacingX())*1.5f,windowHeight*0.25f,ImGuiChildFlags.Border);
+                ImGui.pushFont(Window.h4Font);
+                ImGui.text("⏰ Account creation date");
+                ImGui.popFont();
+                ImGui.textWrapped("Your account was created on: "+ new Date(User.getCurrentUser().getCreationTime()));
+                ImGui.endChild();
+                ImGui.sameLine();
+                ImGui.beginChild("##AccountBio",windowWidth*0.5f-(style.getItemSpacingX())*1.5f,windowHeight*0.5f,ImGuiChildFlags.Border);
+                ImGui.pushFont(Window.bigFont);
+                ImGui.text("Your bio:");
+                ImGui.popFont();
+                ImGui.setNextItemWidth(-1);
+                ImGui.inputTextMultiline("##bio", bioString,ImGuiInputTextFlags.AllowTabInput);
+                ImGui.text(bioString.getLength() + "/" + (bioString.getBufferSize() - 1));
+                if (ImGui.button("Update bio")) {
+                    User.changeBio(bioString.get());
+                }
+                ImGui.endChild();
                 ImGui.endTabItem();
             }
 

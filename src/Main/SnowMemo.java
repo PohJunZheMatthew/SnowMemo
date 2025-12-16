@@ -21,6 +21,7 @@ import org.lwjgl.glfw.*;
 
 import java.awt.*;
 import java.io.*;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -55,7 +56,55 @@ public class SnowMemo {
     private static final long AUTO_SAVE_INTERVAL_MS = 30000; // 30 seconds
     private long lastAutoSaveTime = System.currentTimeMillis();
     private SaveIndicator saveIndicator;
+    private static final byte[] emojiFontBytes;
+    private static final byte[] notoEmojiFontBytes;
+    private static final byte[] symbolaFontBytes;
+    static{
+        InputStream emojiFontInputStream = Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/OpenMoji-black-glyf/OpenMoji-black-glyf.ttf"));
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] tmp = new byte[4096];
+        int n = 0;
+        while (true) {
+            try {
+                if ((n = emojiFontInputStream.read(tmp)) == -1) break;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            buffer.write(tmp, 0, n);
+        }
+        emojiFontBytes = buffer.toByteArray();
 
+        emojiFontInputStream = Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/Noto_Emoji/NotoEmoji-Regular.ttf"));
+        buffer = new ByteArrayOutputStream();
+        tmp = new byte[4096];
+        n = 0;
+        while (true) {
+            try {
+                if ((n = emojiFontInputStream.read(tmp)) == -1) break;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            buffer.write(tmp, 0, n);
+        }
+        notoEmojiFontBytes = buffer.toByteArray();
+
+        emojiFontInputStream = Objects.requireNonNull(SnowMemo.class.getResourceAsStream("Resources/Fonts/symbola/Symbola.ttf"));
+        buffer = new ByteArrayOutputStream();
+        tmp = new byte[4096];
+        n = 0;
+        while (true) {
+            try {
+                if ((n = emojiFontInputStream.read(tmp)) == -1) break;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            buffer.write(tmp, 0, n);
+        }
+        symbolaFontBytes = buffer.toByteArray();
+    }
+    public static byte[] getEmojiFontBytes(){
+        return emojiFontBytes;
+    }
     static {
         try {
             quickSandFont = Font.createFont(Font.TRUETYPE_FONT,SnowMemo.class.getResourceAsStream("Resources/Fonts/QuicksandFont/Quicksand-VariableFont_wght.ttf"));
@@ -126,6 +175,14 @@ public class SnowMemo {
 
     public static void resetScroll() {
         zoom = 6;
+    }
+
+    public static byte[] getNotoEmojiFontBytes() {
+        return notoEmojiFontBytes;
+    }
+
+    public static byte[] getSymbolaFontBytes() {
+        return symbolaFontBytes;
     }
 
     public void init() throws Exception{
@@ -560,4 +617,5 @@ public class SnowMemo {
         }
         System.out.println("QUIT!");
     }
+
 }
